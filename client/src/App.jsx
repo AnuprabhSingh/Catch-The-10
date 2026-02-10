@@ -9,7 +9,7 @@ import RoomLobby from "./components/RoomLobby";
 import Landing from "./pages/Landing";
 import { SUIT_LABELS } from "./utils/cards";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
+const SERVER_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export default function App() {
   const socketRef = useRef(null);
@@ -22,7 +22,13 @@ export default function App() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const socket = io(SERVER_URL, { transports: ["websocket"] });
+    const socket = io(SERVER_URL, { 
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5
+    });
     socketRef.current = socket;
 
     socket.on("connect", () => setConnected(true));
