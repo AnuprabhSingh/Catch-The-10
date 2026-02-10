@@ -1,0 +1,39 @@
+name: catch-the-ten
+services:
+- name: backend
+  github:
+    branch: main
+    deploy_on_push: true
+    repo: your-github-username/catchThe10
+  build_command: cd server && npm install
+  run_command: cd server && npm run start
+  http_port: 3001
+  envs:
+  - key: NODE_ENV
+    value: production
+  - key: PORT
+    value: "3001"
+  - key: CORS_ORIGIN
+    scope: RUN_AND_BUILD_TIME
+    value: "${frontend.PUBLIC_URL}"
+
+- name: frontend
+  github:
+    branch: main
+    deploy_on_push: true
+    repo: your-github-username/catchThe10
+  build_command: cd client && npm install && npm run build
+  source_dir: client/dist
+  http_port: 80
+  envs:
+  - key: VITE_API_URL
+    scope: BUILD_TIME
+    value: "${backend.PUBLIC_URL}"
+
+static_sites:
+- name: frontend
+  source_dir: client/dist
+  routes:
+  - path: /
+    match_prefix: true
+    redirect_uri: /index.html

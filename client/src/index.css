@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+.glass-panel {
+  background: radial-gradient(circle at top, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.85));
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(12px);
+}
+
+.table-felt {
+  background: radial-gradient(circle at center, rgba(20, 83, 45, 0.5), rgba(6, 33, 22, 0.9));
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  box-shadow: inset 0 0 30px rgba(2, 6, 23, 0.6), 0 20px 40px rgba(2, 6, 23, 0.6);
+}
+
+.hand-fan {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+@media (min-width: 768px) {
+  .hand-fan {
+    gap: 14px;
+  }
+  .hand-fan .card-root {
+    transform: translateY(0) rotate(calc(var(--fan-index, 0) * 2deg - 6deg));
+  }
+}
+
+@media (max-width: 640px) {
+  .deck-stack {
+    height: 72px;
+    width: 56px;
+  }
+
+  .deck-card {
+    border-radius: 14px;
+  }
+}
+
+.card-root {
+  transform-origin: center;
+}
+
+.card-deal {
+  animation: deal-in 0.45s ease both;
+  animation-delay: var(--deal-delay, 0ms);
+}
+
+.card-table {
+  animation: table-in 0.3s ease both;
+}
+
+.deck-stack {
+  position: relative;
+  height: 90px;
+  width: 70px;
+}
+
+.deck-card {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(51, 65, 85, 0.9));
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
+}
+
+.deck-card:nth-child(1) {
+  transform: translate(-6px, 6px) rotate(-4deg);
+}
+
+.deck-card:nth-child(2) {
+  transform: translate(0px, 0px) rotate(0deg);
+}
+
+.deck-card:nth-child(3) {
+  transform: translate(6px, -6px) rotate(4deg);
+}
+
+.deck-shuffle .deck-card:nth-child(1) {
+  animation: shuffle-left 0.8s ease-in-out infinite;
+}
+
+.deck-shuffle .deck-card:nth-child(3) {
+  animation: shuffle-right 0.8s ease-in-out infinite;
+}
+
+@keyframes deal-in {
+  0% {
+    transform: translateY(12px) scale(0.96);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes table-in {
+  0% {
+    transform: translateY(-6px) scale(0.94);
+    opacity: 0.2;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes shuffle-left {
+  0%,
+  100% {
+    transform: translate(-6px, 6px) rotate(-4deg);
+  }
+  50% {
+    transform: translate(-10px, 10px) rotate(-8deg);
+  }
+}
+
+@keyframes shuffle-right {
+  0%,
+  100% {
+    transform: translate(6px, -6px) rotate(4deg);
+  }
+  50% {
+    transform: translate(10px, -10px) rotate(8deg);
+  }
+}
