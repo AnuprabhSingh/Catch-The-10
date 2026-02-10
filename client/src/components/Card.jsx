@@ -12,7 +12,7 @@ export default function Card({
 }) {
   if (!card) {
     return (
-      <div className="h-20 w-14 rounded-xl border border-slate-700/60 bg-slate-900/40 sm:h-24 sm:w-16" />
+      <div className={`rounded-lg border border-slate-700/60 bg-slate-900/40 sm:rounded-xl ${isOnTable ? "h-14 w-10 sm:h-18 sm:w-13 md:h-22 md:w-15" : "h-16 w-12 sm:h-20 sm:w-14 md:h-24 md:w-16"}`} />
     );
   }
 
@@ -23,23 +23,27 @@ export default function Card({
     ...(style || {})
   };
 
+  const sizeClasses = isOnTable
+    ? "h-14 w-10 sm:h-18 sm:w-13 md:h-22 md:w-15"
+    : "h-16 w-12 sm:h-20 sm:w-14 md:h-24 md:w-16";
+
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={!isClickable}
       style={dealStyle}
-      className={`card-root relative flex h-20 w-14 flex-col items-center justify-between rounded-xl border px-2 py-2 text-xs font-semibold transition sm:h-24 sm:w-16 sm:text-sm
-        ${isClickable ? "cursor-pointer hover:-translate-y-1 hover:border-emerald-400" : "cursor-default"}
+      className={`card-root relative flex ${sizeClasses} flex-col items-center justify-between rounded-lg border px-1 py-1 text-xs font-semibold transition active:scale-95 sm:rounded-xl sm:px-2 sm:py-1.5
+        ${isClickable ? "cursor-pointer hover:-translate-y-1 hover:border-emerald-400 active:border-emerald-400" : "cursor-default"}
         ${isTrump ? "border-amber-400/80 shadow-[0_0_0_2px_rgba(251,191,36,0.3)]" : "border-slate-700/60"}
         ${isDimmed ? "opacity-60" : "opacity-100"}
         ${isOnTable ? "card-table" : ""}
         ${dealDelay ? "card-deal" : ""}
         bg-slate-900/80`}
     >
-      <span className={`${suitColor} text-sm sm:text-base`}>{card.rank}</span>
-      <span className={`${suitColor} text-lg sm:text-xl`}>{SUIT_SYMBOLS[card.suit]}</span>
-      <span className={`${suitColor} text-[10px] sm:text-xs`}>{card.rank}</span>
+      <span className={`${suitColor} text-[10px] leading-none sm:text-sm md:text-base`}>{card.rank}</span>
+      <span className={`${suitColor} text-sm leading-none sm:text-lg md:text-xl`}>{SUIT_SYMBOLS[card.suit]}</span>
+      <span className={`${suitColor} text-[7px] leading-none sm:text-[10px] md:text-xs`}>{card.rank}</span>
     </button>
   );
 }

@@ -79,7 +79,12 @@ export function registerSocketHandlers(io, socket, roomManager) {
     emitStateToRoom(roomId);
   });
 
-  socket.on("start_game", ({ roomId }) => {
+  socket.on("start_game", (data) => {
+    const roomId = data?.roomId;
+    if (!roomId) {
+      socket.emit("invalid_move", { reason: "Room ID is required." });
+      return;
+    }
     const { room, error } = roomManager.startGame(roomId);
     if (error) {
       socket.emit("invalid_move", { reason: error });
@@ -90,7 +95,13 @@ export function registerSocketHandlers(io, socket, roomManager) {
     emitStateToRoom(roomId);
   });
 
-  socket.on("play_card", ({ roomId, cardId }) => {
+  socket.on("play_card", (data) => {
+    const roomId = data?.roomId;
+    const cardId = data?.cardId;
+    if (!roomId || !cardId) {
+      socket.emit("invalid_move", { reason: "Room ID and card ID are required." });
+      return;
+    }
     const room = roomManager.getRoom(roomId);
     if (!room?.game) {
       socket.emit("invalid_move", { reason: "Game not found." });

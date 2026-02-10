@@ -4,10 +4,27 @@
 
 :root {
   color-scheme: dark;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+html, body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   font-family: "Inter", system-ui, -apple-system, sans-serif;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+input, select, textarea {
+  font-size: 16px; /* prevents iOS zoom on focus */
 }
 
 .glass-panel {
@@ -23,35 +40,44 @@ body {
   box-shadow: inset 0 0 30px rgba(2, 6, 23, 0.6), 0 20px 40px rgba(2, 6, 23, 0.6);
 }
 
+/* ── Hand fan (mobile-first) ── */
 .hand-fan {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  flex-wrap: nowrap;
+  gap: 4px;
   justify-content: center;
+  padding: 0 2px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.hand-fan::-webkit-scrollbar {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .hand-fan {
+    gap: 8px;
+    padding: 0 8px;
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
 }
 
 @media (min-width: 768px) {
   .hand-fan {
-    gap: 14px;
+    gap: 12px;
+    padding: 0;
   }
   .hand-fan .card-root {
     transform: translateY(0) rotate(calc(var(--fan-index, 0) * 2deg - 6deg));
   }
 }
 
-@media (max-width: 640px) {
-  .deck-stack {
-    height: 72px;
-    width: 56px;
-  }
-
-  .deck-card {
-    border-radius: 14px;
-  }
-}
-
+/* ── Cards ── */
 .card-root {
   transform-origin: center;
+  flex-shrink: 0;
 }
 
 .card-deal {
@@ -63,23 +89,50 @@ body {
   animation: table-in 0.3s ease both;
 }
 
+/* ── Deck ── */
 .deck-stack {
   position: relative;
-  height: 90px;
-  width: 70px;
+  height: 56px;
+  width: 44px;
+}
+
+@media (min-width: 640px) {
+  .deck-stack {
+    height: 72px;
+    width: 56px;
+  }
+}
+
+@media (min-width: 768px) {
+  .deck-stack {
+    height: 90px;
+    width: 70px;
+  }
 }
 
 .deck-card {
   position: absolute;
   inset: 0;
-  border-radius: 16px;
+  border-radius: 12px;
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(51, 65, 85, 0.9));
   border: 1px solid rgba(148, 163, 184, 0.3);
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
 }
 
+@media (min-width: 640px) {
+  .deck-card {
+    border-radius: 14px;
+  }
+}
+
+@media (min-width: 768px) {
+  .deck-card {
+    border-radius: 16px;
+  }
+}
+
 .deck-card:nth-child(1) {
-  transform: translate(-6px, 6px) rotate(-4deg);
+  transform: translate(-4px, 4px) rotate(-3deg);
 }
 
 .deck-card:nth-child(2) {
@@ -87,7 +140,7 @@ body {
 }
 
 .deck-card:nth-child(3) {
-  transform: translate(6px, -6px) rotate(4deg);
+  transform: translate(4px, -4px) rotate(3deg);
 }
 
 .deck-shuffle .deck-card:nth-child(1) {

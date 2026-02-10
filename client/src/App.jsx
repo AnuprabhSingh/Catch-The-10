@@ -161,7 +161,7 @@ export default function App() {
   });
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.3),_transparent_50%),radial-gradient(circle_at_bottom,_rgba(20,83,45,0.25),_transparent_55%),linear-gradient(135deg,_#020617,_#0f172a_55%,_#1e293b)] p-4 text-slate-100 sm:p-6">
+    <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.3),_transparent_50%),radial-gradient(circle_at_bottom,_rgba(20,83,45,0.25),_transparent_55%),linear-gradient(135deg,_#020617,_#0f172a_55%,_#1e293b)] p-2 text-slate-100 sm:p-4 md:p-6">
       {/* Show Landing page if not joined */}
       {!joined && <Landing socket={socketRef.current} connected={connected} onJoinRoom={handleJoinRoom} />}
 
@@ -203,40 +203,41 @@ export default function App() {
 
       {/* Show Game Board if game has started */}
       {joined && !inLobby && gameState && (
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 sm:gap-6">
-          <div className="grid gap-4 sm:gap-6 lg:grid-cols-[2fr,1fr]">
-            <div className="glass-panel rounded-3xl p-6">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div>
-                    <div className="text-xs uppercase text-slate-400">Room</div>
-                    <div className="text-lg font-semibold">{gameState?.roomId || roomId}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase text-slate-400">Phase</div>
-                    <div className="text-lg font-semibold">
-                      {gameState?.phase || "LOBBY"}
-                    </div>
-                  </div>
-                </div>
-                {canStart && (
-                  <button
-                    type="button"
-                    onClick={startGame}
-                    className="rounded-2xl bg-amber-300 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-amber-400/30 transition hover:-translate-y-0.5"
-                  >
-                    Start Game
-                  </button>
-                )}
-              </div>
+        <div className="mx-auto flex w-full flex-col gap-2 sm:max-w-6xl sm:gap-4">
+          {/* ── Top bar: room info + scores (compact on mobile) ── */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+            <div className="glass-panel flex items-center gap-3 rounded-xl px-3 py-1.5 text-[11px] sm:rounded-2xl sm:px-4 sm:py-2 sm:text-sm">
+              <span className="uppercase text-slate-400">Room</span>
+              <span className="font-semibold">{gameState?.roomId || roomId}</span>
+              <span className="text-slate-600">|</span>
+              <span className="uppercase text-slate-400">Phase</span>
+              <span className="font-semibold">{gameState?.phase || "LOBBY"}</span>
+            </div>
+            <ScoreBoard scores={gameState?.scores} compact />
+            {canStart && (
+              <button
+                type="button"
+                onClick={startGame}
+                className="ml-auto rounded-xl bg-amber-300 px-3 py-1.5 text-xs font-semibold text-slate-950 shadow-lg shadow-amber-400/30 transition hover:-translate-y-0.5 sm:px-4 sm:py-2 sm:text-sm"
+              >
+                Start
+              </button>
+            )}
+          </div>
 
-              <div className="grid gap-4 md:grid-cols-[1fr,2fr,1fr]">
-                <div className="flex flex-col gap-10 justify-between">
+          {/* ── Main game area ── */}
+          <div className="grid gap-2 sm:gap-4 lg:grid-cols-[1fr,240px]">
+            <div className="glass-panel rounded-2xl p-2 sm:rounded-3xl sm:p-4">
+              {/* Player seats + table grid */}
+              <div className="grid grid-cols-[auto,1fr,auto] gap-1 sm:gap-3">
+                {/* Left column: top-left & left players */}
+                <div className="flex flex-col justify-between gap-1 py-1 sm:gap-4 sm:py-2">
                   {renderSeat(seatByPosition.top, "top")}
                   {renderSeat(seatByPosition.left, "left")}
                 </div>
 
-                <div className="relative min-h-[260px] sm:min-h-[360px]">
+                {/* Center: the table */}
+                <div className="relative aspect-square min-h-[140px] max-h-[280px] w-full sm:min-h-[240px] sm:max-h-[360px]">
                   <Table
                     tableCards={gameState?.tableCards || []}
                     trumpSuit={gameState?.trumpSuit}
@@ -244,30 +245,33 @@ export default function App() {
                   />
                 </div>
 
-                <div className="flex flex-col gap-10 justify-between items-end">
+                {/* Right column: right & bottom players */}
+                <div className="flex flex-col items-end justify-between gap-1 py-1 sm:gap-4 sm:py-2">
                   {renderSeat(seatByPosition.right, "right")}
                   {renderSeat(seatByPosition.bottom, "bottom")}
                 </div>
               </div>
 
-              <div className="mt-6 rounded-3xl border border-slate-800/60 bg-slate-950/70 p-4">
-                <div className="mb-3 flex flex-wrap items-center gap-4">
-                  <div className="text-sm">
-                    Base Suit: <span className="font-semibold">{gameState?.baseSuit ? SUIT_LABELS[gameState.baseSuit] : "None"}</span>
-                  </div>
-                  <div className="text-sm">
-                    Trump Suit: <span className="font-semibold">{gameState?.trumpSuit ? SUIT_LABELS[gameState.trumpSuit] : "None"}</span>
-                  </div>
-                  <div className="text-sm">
+              {/* ── Your hand ── */}
+              <div className="mt-2 rounded-xl border border-slate-800/60 bg-slate-950/70 p-2 sm:mt-4 sm:rounded-2xl sm:p-3">
+                {/* Info row */}
+                <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[11px] sm:mb-2 sm:gap-3 sm:text-sm">
+                  <span>
+                    Base: <strong>{gameState?.baseSuit ? SUIT_LABELS[gameState.baseSuit] : "—"}</strong>
+                  </span>
+                  <span>
+                    Trump: <strong>{gameState?.trumpSuit ? SUIT_LABELS[gameState.trumpSuit] : "—"}</strong>
+                  </span>
+                  <span className={isYourTurn ? "text-emerald-300 font-semibold" : ""}>
                     Turn:{" "}
-                    <span className="font-semibold">
+                    <strong>
                       {isYourTurn
-                        ? "You"
+                        ? "Your turn!"
                         : gameState?.players?.find((p) => p.seatIndex === gameState?.currentTurnIndex)?.name ||
                           gameState?.currentTurnIndex ||
-                          "-"}
-                    </span>
-                  </div>
+                          "—"}
+                    </strong>
+                  </span>
                 </div>
 
                 <div className="hand-fan">
@@ -284,20 +288,32 @@ export default function App() {
                     />
                   ))}
                   {!yourPlayer?.hand?.length && (
-                    <div className="text-sm text-slate-500">Waiting for cards...</div>
+                    <div className="text-xs text-slate-500 sm:text-sm">Waiting for cards...</div>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col gap-6">
+            {/* ── Sidebar (desktop) / hidden on mobile since scoreboard is in top bar ── */}
+            <div className="hidden flex-col gap-3 lg:flex">
               <ScoreBoard scores={gameState?.scores} />
               <Deck isShuffling={isShuffling} />
-              <div className="glass-panel rounded-3xl p-4 text-sm text-slate-300">
+              <div className="glass-panel rounded-2xl p-3 text-sm text-slate-300 sm:rounded-3xl sm:p-4">
                 <div className="font-semibold text-slate-100">Status</div>
                 <div className="mt-2 min-h-[40px] text-xs text-slate-400">
                   {message || "Awaiting action."}
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Mobile bottom bar: status + deck ── */}
+          <div className="flex items-start gap-2 lg:hidden">
+            <Deck isShuffling={isShuffling} />
+            <div className="glass-panel flex-1 rounded-xl p-2 text-xs text-slate-300">
+              <div className="font-semibold text-slate-100">Status</div>
+              <div className="mt-1 text-[11px] text-slate-400">
+                {message || "Awaiting action."}
               </div>
             </div>
           </div>

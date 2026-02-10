@@ -11,6 +11,36 @@ export default function Landing({ socket, connected, onJoinRoom }) {
   const roomIdRef = useRef(roomId);
   roomIdRef.current = roomId;
 
+  // Load from localStorage on mount
+  useEffect(() => {
+    const savedPlayerName = localStorage.getItem("playerName");
+    const savedRoomId = localStorage.getItem("roomId");
+    
+    if (savedPlayerName) {
+      setPlayerName(savedPlayerName);
+    }
+    if (savedRoomId) {
+      setRoomId(savedRoomId);
+      // If we have a saved room ID and player name, try to rejoin automatically
+      if (savedPlayerName) {
+        setCurrentPage("join");
+      }
+    }
+  }, []);
+
+  // Save to localStorage when they change
+  useEffect(() => {
+    if (playerName) {
+      localStorage.setItem("playerName", playerName);
+    }
+  }, [playerName]);
+
+  useEffect(() => {
+    if (roomId) {
+      localStorage.setItem("roomId", roomId);
+    }
+  }, [roomId]);
+
   useEffect(() => {
     if (!socket) return;
 
@@ -31,10 +61,20 @@ export default function Landing({ socket, connected, onJoinRoom }) {
     socket.on("join_success", handleJoinSuccess);
     socket.on("join_error", handleJoinError);
 
-    // Check for room parameter in URL
+    // Check for room and name parameters in URL
     const params = new URLSearchParams(window.location.search);
     const urlRoom = params.get("room");
-    if (urlRoom) {
+    const urlName = params.get("name");
+    if (urlRoom && urlName) {
+      // Auto-join: both room and name provided via URL
+      setRoomId(urlRoom.toUpperCase());
+      setPlayerName(urlName);
+      playerNameRef.current = urlName;
+      setIsLoading(true);
+      socket.emit("join_room", { roomId: urlRoom.toUpperCase(), name: urlName });
+      // Clean the URL params after auto-joining
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (urlRoom) {
       setRoomId(urlRoom.toUpperCase());
       setCurrentPage("signup");
     }
@@ -75,6 +115,15 @@ export default function Landing({ socket, connected, onJoinRoom }) {
     socket.emit("join_room", { roomId: roomId, name: playerName });
   };
 
+  const clearSession = () => {
+    localStorage.removeItem("playerName");
+    localStorage.removeItem("roomId");
+    setPlayerName("");
+    setRoomId("");
+    setMessage("");
+    setCurrentPage("welcome");
+  };
+
   const shareOnWhatsApp = () => {
     const roomLink = `${window.location.origin}?room=${roomId}`;
     const message = `🎴 Join me for "Catch the Ten"! 🎴\n\nRoom ID: ${roomId}\n\nJoin here: ${roomLink}\n\nLet's play!`;
@@ -84,7 +133,7 @@ export default function Landing({ socket, connected, onJoinRoom }) {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.3),_transparent_50%),radial-gradient(circle_at_bottom,_rgba(20,83,45,0.25),_transparent_55%),linear-gradient(135deg,_#020617,_#0f172a_55%,_#1e293b)] p-4 text-slate-100 flex items-center justify-center">
+    <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.3),_transparent_50%),radial-gradient(circle_at_bottom,_rgba(20,83,45,0.25),_transparent_55%),linear-gradient(135deg,_#020617,_#0f172a_55%,_#1e293b)] p-4 text-slate-100 flex items-center justify-center">
       <div className="w-full max-w-md">
         {/* Welcome Page */}
         {currentPage === "welcome" && (
@@ -158,6 +207,13 @@ export default function Landing({ socket, connected, onJoinRoom }) {
               >
                 Back
               </button>
+
+              <button
+                onClick={clearSession}
+                className="w-full py-2 px-4 rounded-xl border border-red-600/50 hover:border-red-500 text-red-400 hover:text-red-300 font-semibold transition text-sm"
+              >
+                Clear Session
+              </button>
             </div>
           </div>
         )}
@@ -200,6 +256,13 @@ export default function Landing({ socket, connected, onJoinRoom }) {
                 className="w-full py-2 px-4 rounded-xl border border-slate-600 hover:border-slate-500 text-slate-300 hover:text-white font-semibold transition"
               >
                 Back
+              </button>
+
+              <button
+                onClick={clearSession}
+                className="w-full py-2 px-4 rounded-xl border border-red-600/50 hover:border-red-500 text-red-400 hover:text-red-300 font-semibold transition text-sm"
+              >
+                Clear Session & Logout
               </button>
             </div>
           </div>

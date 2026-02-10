@@ -9,7 +9,12 @@ const app = express();
 
 // CORS configuration for production
 const corsOrigin = process.env.CORS_ORIGIN || "http://localhost:5173";
-app.use(cors({ origin: corsOrigin }));
+const isDev = process.env.NODE_ENV !== "production";
+const allowOrigin = (origin, callback) => {
+  if (isDev || !origin) return callback(null, true);
+  return callback(null, origin === corsOrigin);
+};
+app.use(cors({ origin: allowOrigin }));
 app.use(express.json());
 
 app.get("/health", (req, res) => {
@@ -19,7 +24,7 @@ app.get("/health", (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: corsOrigin,
+    origin: allowOrigin,
     methods: ["GET", "POST"]
   },
   transports: ["websocket", "polling"]

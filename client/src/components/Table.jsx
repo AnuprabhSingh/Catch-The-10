@@ -21,29 +21,29 @@ export default function Table({ tableCards, trumpSuit, yourIndex }) {
 
   return (
     <div className="relative flex h-full w-full items-center justify-center">
-      <div className="table-felt absolute inset-0 rounded-[28px] sm:rounded-[40px]" />
-      <div className="absolute top-3 z-10 flex w-full justify-center sm:top-6">
+      <div className="table-felt absolute inset-0 rounded-[20px] sm:rounded-[28px] md:rounded-[40px]" />
+      <div className="absolute top-1 z-10 flex w-full justify-center sm:top-3">
         <Card
           card={cardByPosition.top}
           isTrump={cardByPosition.top?.suit === trumpSuit}
           isOnTable
         />
       </div>
-      <div className="absolute left-3 z-10 flex h-full items-center sm:left-6">
+      <div className="absolute left-1 z-10 flex h-full items-center sm:left-3">
         <Card
           card={cardByPosition.left}
           isTrump={cardByPosition.left?.suit === trumpSuit}
           isOnTable
         />
       </div>
-      <div className="absolute right-3 z-10 flex h-full items-center sm:right-6">
+      <div className="absolute right-1 z-10 flex h-full items-center sm:right-3">
         <Card
           card={cardByPosition.right}
           isTrump={cardByPosition.right?.suit === trumpSuit}
           isOnTable
         />
       </div>
-      <div className="absolute bottom-3 z-10 flex w-full justify-center sm:bottom-6">
+      <div className="absolute bottom-1 z-10 flex w-full justify-center sm:bottom-3">
         <Card
           card={cardByPosition.bottom}
           isTrump={cardByPosition.bottom?.suit === trumpSuit}
