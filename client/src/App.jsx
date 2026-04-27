@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { io } from "socket.io-client";
+import { socket } from "./socket";
 import Card from "./components/Card";
 import Deck from "./components/Deck";
 import PlayerSeat from "./components/PlayerSeat";
@@ -9,98 +9,208 @@ import RoomLobby from "./components/RoomLobby";
 import Landing from "./pages/Landing";
 import { SUIT_LABELS } from "./utils/cards";
 
-const SERVER_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const SESSION_STORAGE_KEY = "catch10_session";
+const GAME_STORAGE_KEY = "catch10_game";
+const PLAYER_ID_STORAGE_KEY = "catch10_playerId";
+
+const getPlayerId = () => {
+  let id = localStorage.getItem(PLAYER_ID_STORAGE_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(PLAYER_ID_STORAGE_KEY, id);
+  }
+  return id;
+};
+
+const readStoredJson = (storageKey) => {
+  try {
+    const rawValue = localStorage.getItem(storageKey);
+    return rawValue ? JSON.parse(rawValue) : null;
+  } catch {
+    localStorage.removeItem(storageKey);
+    return null;
+  }
+};
+
+const readStoredSession = () => {
+  const session = readStoredJson(SESSION_STORAGE_KEY);
+  if (!session?.roomId || !session?.playerName) {
+    return null;
+  }
+
+  return {
+    roomId: `${session.roomId}`.trim().toUpperCase(),
+    playerName: `${session.playerName}`.trim()
+  };
+};
+
+const readStoredGameState = () => readStoredJson(GAME_STORAGE_KEY);
+
+const persistSession = (session) => {
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+};
+
+const clearStoredSession = () => {
+  localStorage.removeItem(SESSION_STORAGE_KEY);
+  localStorage.removeItem(GAME_STORAGE_KEY);
+};
 
 export default function App() {
-  const socketRef = useRef(null);
-  const [connected, setConnected] = useState(false);
-  const [roomId, setRoomId] = useState("");
-  const [playerName, setPlayerName] = useState("");
-  const [joined, setJoined] = useState(false);
-  const [inLobby, setInLobby] = useState(true);
-  const [gameState, setGameState] = useState(null);
+  const initialSession = readStoredSession();
+  const initialGameState = readStoredGameState();
+  const socketRef = useRef(socket);
+  const lastJoinKeyRef = useRef("");
+
+  const [connected, setConnected] = useState(socket.connected);
+  const [roomId, setRoomId] = useState(initialSession?.roomId ?? "");
+  const [playerName, setPlayerName] = useState(initialSession?.playerName ?? "");
+  const [joined, setJoined] = useState(Boolean(initialSession));
+  const [inLobby, setInLobby] = useState(initialGameState?.phase !== "LOBBY" ? false : true);
+  const [gameState, setGameState] = useState(initialGameState);
   const [message, setMessage] = useState("");
+  const [isJoining, setIsJoining] = useState(false);
+
+  const emitJoinRoom = (session) => {
+    if (!session?.roomId || !session?.playerName) {
+      return;
+    }
+
+    const s = socketRef.current;
+    if (!s.connected) {
+      s.connect();
+      return;
+    }
+
+    const joinKey = `${s.id}:${session.roomId}:${getPlayerId()}`;
+    if (lastJoinKeyRef.current === joinKey) {
+      return;
+    }
+
+    lastJoinKeyRef.current = joinKey;
+    setIsJoining(true);
+    s.emit("join_room", {
+      roomId: session.roomId,
+      name: session.playerName,
+      playerId: getPlayerId()
+    });
+  };
 
   useEffect(() => {
-    const socket = io(SERVER_URL, { 
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5
-    });
-    socketRef.current = socket;
+    const s = socketRef.current;
 
-    socket.on("connect", () => setConnected(true));
-    socket.on("disconnect", () => setConnected(false));
+    const onConnect = () => {
+      setConnected(true);
+      lastJoinKeyRef.current = "";
 
-    socket.on("game_state", (state) => {
-      setGameState(state);
+      const savedSession = readStoredSession();
+      if (savedSession) {
+        emitJoinRoom(savedSession);
+      }
+    };
+
+    const onDisconnect = () => {
+      setConnected(false);
+      setIsJoining(false);
+      lastJoinKeyRef.current = "";
+    };
+
+    const onJoinSuccess = ({ roomId: joinedRoomId }) => {
+      setRoomId(joinedRoomId);
+      setJoined(true);
       setMessage("");
-      setJoined(true);
-      // Show lobby if in LOBBY phase, show game otherwise
-      if (state.phase === "LOBBY") {
-        setInLobby(true);
-      } else {
-        setInLobby(false);
-      }
-    });
+      setIsJoining(false);
+    };
 
-    socket.on("invalid_move", (payload) => {
-      setMessage(payload?.reason || "Invalid move");
-    });
-
-    socket.on("trick_result", (payload) => {
-      if (payload?.message) {
-        setMessage(payload.message);
-      }
-    });
-
-    socket.on("trump_decided", (payload) => {
-      if (payload?.trumpSuit) {
-        const label = SUIT_LABELS[payload.trumpSuit] || payload.trumpSuit;
-        setMessage(`Trump suit decided: ${label}`);
-      }
-    });
-
-    socket.on("join_success", (payload) => {
-      setJoined(true);
-      setInLobby(true);
-    });
-
-    socket.on("join_error", (payload) => {
-      setMessage(payload?.reason || "Failed to join room");
+    const onJoinError = ({ reason }) => {
       setJoined(false);
-    });
+      setGameState(null);
+      setInLobby(true);
+      setMessage(reason || "Failed to join room.");
+      setIsJoining(false);
+    };
 
-    socket.on("game_over", (payload) => {
-      if (payload?.result) {
-        setMessage(payload.result);
-      }
-    });
+    const onInvalidMove = ({ reason }) => {
+      setMessage(reason || "That move is not allowed.");
+    };
+
+    const onRoomClosed = () => {
+      clearStoredSession();
+      setJoined(false);
+      setInLobby(true);
+      setRoomId("");
+      setPlayerName("");
+      setGameState(null);
+      setMessage("Room closed.");
+      setIsJoining(false);
+      lastJoinKeyRef.current = "";
+    };
+
+    const onGameState = (state) => {
+      setGameState(state);
+      setJoined(true);
+      setInLobby(state.phase === "LOBBY");
+      setMessage("");
+      setIsJoining(false);
+      localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(state));
+    };
+
+    s.on("connect", onConnect);
+    s.on("disconnect", onDisconnect);
+    s.on("join_success", onJoinSuccess);
+    s.on("join_error", onJoinError);
+    s.on("invalid_move", onInvalidMove);
+    s.on("room_closed", onRoomClosed);
+    s.on("game_state", onGameState);
+
+    if (!s.connected) {
+      s.connect();
+    } else {
+      onConnect();
+    }
 
     return () => {
-      socket.disconnect();
+      s.off("connect", onConnect);
+      s.off("disconnect", onDisconnect);
+      s.off("join_success", onJoinSuccess);
+      s.off("join_error", onJoinError);
+      s.off("invalid_move", onInvalidMove);
+      s.off("room_closed", onRoomClosed);
+      s.off("game_state", onGameState);
     };
   }, []);
 
-  const yourIndex = gameState?.yourPlayerIndex ?? null;
-  const yourPlayer =
-    yourIndex != null ? gameState?.players?.find((p) => p.seatIndex === yourIndex) : null;
-  const isYourTurn = gameState?.currentTurnIndex === yourIndex;
-  const isShuffling = gameState?.phase === "TRUMP_DISCOVERY" && !!gameState?.trumpSuit;
+  const submitJoinRequest = ({ roomId: nextRoomId, playerName: nextPlayerName }) => {
+    const session = {
+      roomId: `${nextRoomId ?? ""}`.trim().toUpperCase(),
+      playerName: `${nextPlayerName ?? ""}`.trim()
+    };
 
-  const canStart = useMemo(() => {
-    return gameState?.phase === "LOBBY" && (gameState?.players?.length ?? 0) === 4;
-  }, [gameState]);
-
-  const joinRoom = () => {
-    if (!roomId || !playerName) {
+    if (!session.roomId || !session.playerName) {
       setMessage("Enter a room name and player name.");
       return;
     }
-    socketRef.current.emit("join_room", { roomId, name: playerName });
+
+    persistSession(session);
+    localStorage.removeItem(GAME_STORAGE_KEY);
+    setRoomId(session.roomId);
+    setPlayerName(session.playerName);
     setJoined(true);
+    setInLobby(true);
+    setGameState(null);
+    setMessage("");
+    emitJoinRoom(session);
+  };
+
+  const resetSavedSession = () => {
+    clearStoredSession();
+    setRoomId("");
+    setPlayerName("");
+    setJoined(false);
+    setInLobby(true);
+    setGameState(null);
+    setMessage("");
+    setIsJoining(false);
+    lastJoinKeyRef.current = "";
   };
 
   const startGame = () => {
@@ -108,31 +218,45 @@ export default function App() {
   };
 
   const leaveRoom = () => {
-    socketRef.current.emit("leave_room", { roomId });
-    setJoined(false);
-    setInLobby(true);
-    setRoomId("");
-    setPlayerName("");
-    setGameState(null);
-  };
+    if (roomId) {
+      socketRef.current.emit("leave_room", { roomId });
+    }
 
-  const handleJoinRoom = ({ roomId: newRoomId, playerName: newPlayerName }) => {
-    setRoomId(newRoomId);
-    setPlayerName(newPlayerName);
-    // join_room is already emitted from Landing using the shared socket
-    // join_success listener above will set joined=true
+    resetSavedSession();
   };
 
   const playCard = (card) => {
     if (!isYourTurn) return;
-    socketRef.current.emit("play_card", { roomId, cardId: card.id });
+
+    socketRef.current.emit("play_card", {
+      roomId,
+      cardId: card.id
+    });
   };
+
+  const yourIndex = gameState?.yourPlayerIndex ?? null;
+  const yourPlayer =
+    yourIndex != null
+      ? gameState?.players?.find((player) => player.seatIndex === yourIndex) ?? null
+      : null;
+  const activePlayerCount = useMemo(
+    () => gameState?.players?.filter((player) => player.isConnected).length ?? 0,
+    [gameState]
+  );
+  const isYourTurn = gameState?.currentTurnIndex === yourIndex;
+  const isShuffling =
+    gameState?.phase === "TRUMP_DISCOVERY" && Boolean(gameState?.trumpSuit);
+  const canStart =
+    gameState?.phase === "LOBBY" &&
+    activePlayerCount === 4 &&
+    (gameState?.players?.length ?? 0) === 4;
 
   const renderSeat = (seatIndex, position) => {
     const player =
       seatIndex == null
         ? null
-        : gameState?.players?.find((p) => p.seatIndex === seatIndex) || null;
+        : gameState?.players?.find((entry) => entry.seatIndex === seatIndex) ?? null;
+
     return (
       <PlayerSeat
         key={`${position}-${seatIndex ?? "empty"}`}
@@ -145,15 +269,16 @@ export default function App() {
   };
 
   const positionOrder = ["bottom", "left", "top", "right"];
+
   const getPositionForSeat = (seatIndex) => {
     if (yourIndex == null) return positionOrder[seatIndex] || "bottom";
     const relative = (seatIndex - yourIndex + 4) % 4;
     return positionOrder[relative];
   };
 
-  const seatByPosition = positionOrder.reduce((acc, position) => {
-    acc[position] = null;
-    return acc;
+  const seatByPosition = positionOrder.reduce((accumulator, position) => {
+    accumulator[position] = null;
+    return accumulator;
   }, {});
 
   (gameState?.players || []).forEach((player) => {
@@ -162,10 +287,18 @@ export default function App() {
 
   return (
     <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.3),_transparent_50%),radial-gradient(circle_at_bottom,_rgba(20,83,45,0.25),_transparent_55%),linear-gradient(135deg,_#020617,_#0f172a_55%,_#1e293b)] p-2 text-slate-100 sm:p-4 md:p-6">
-      {/* Show Landing page if not joined */}
-      {!joined && <Landing socket={socketRef.current} connected={connected} onJoinRoom={handleJoinRoom} />}
+      {!joined && (
+        <Landing
+          connected={connected}
+          initialRoomId={roomId}
+          initialPlayerName={playerName}
+          isJoining={isJoining}
+          message={message}
+          onClearSession={resetSavedSession}
+          onJoinRequest={submitJoinRequest}
+        />
+      )}
 
-      {/* Show Room Lobby if joined and in lobby phase (even if waiting for gameState) */}
       {joined && inLobby && (
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 sm:gap-6">
           <header className="glass-panel flex flex-col gap-3 rounded-3xl p-6">
@@ -193,7 +326,7 @@ export default function App() {
               <div className="space-y-4">
                 <p className="text-base text-slate-300 sm:text-lg">Loading room...</p>
                 <div className="flex justify-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400"></div>
+                  <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-emerald-400" />
                 </div>
               </div>
             </div>
@@ -201,10 +334,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Show Game Board if game has started */}
       {joined && !inLobby && gameState && (
         <div className="mx-auto flex w-full flex-col gap-2 sm:max-w-6xl sm:gap-4">
-          {/* ── Top bar: room info + scores (compact on mobile) ── */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             <div className="glass-panel flex items-center gap-3 rounded-xl px-3 py-1.5 text-[11px] sm:rounded-2xl sm:px-4 sm:py-2 sm:text-sm">
               <span className="uppercase text-slate-400">Room</span>
@@ -225,18 +356,14 @@ export default function App() {
             )}
           </div>
 
-          {/* ── Main game area ── */}
           <div className="grid gap-2 sm:gap-4 lg:grid-cols-[1fr,240px]">
             <div className="glass-panel rounded-2xl p-2 sm:rounded-3xl sm:p-4">
-              {/* Player seats + table grid */}
               <div className="grid grid-cols-[auto,1fr,auto] gap-1 sm:gap-3">
-                {/* Left column: top-left & left players */}
                 <div className="flex flex-col justify-between gap-1 py-1 sm:gap-4 sm:py-2">
                   {renderSeat(seatByPosition.top, "top")}
                   {renderSeat(seatByPosition.left, "left")}
                 </div>
 
-                {/* Center: the table */}
                 <div className="relative aspect-square min-h-[140px] max-h-[280px] w-full sm:min-h-[240px] sm:max-h-[360px]">
                   <Table
                     tableCards={gameState?.tableCards || []}
@@ -245,31 +372,30 @@ export default function App() {
                   />
                 </div>
 
-                {/* Right column: right & bottom players */}
                 <div className="flex flex-col items-end justify-between gap-1 py-1 sm:gap-4 sm:py-2">
                   {renderSeat(seatByPosition.right, "right")}
                   {renderSeat(seatByPosition.bottom, "bottom")}
                 </div>
               </div>
 
-              {/* ── Your hand ── */}
               <div className="mt-2 rounded-xl border border-slate-800/60 bg-slate-950/70 p-2 sm:mt-4 sm:rounded-2xl sm:p-3">
-                {/* Info row */}
                 <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[11px] sm:mb-2 sm:gap-3 sm:text-sm">
                   <span>
-                    Base: <strong>{gameState?.baseSuit ? SUIT_LABELS[gameState.baseSuit] : "—"}</strong>
+                    Base: <strong>{gameState?.baseSuit ? SUIT_LABELS[gameState.baseSuit] : "-"}</strong>
                   </span>
                   <span>
-                    Trump: <strong>{gameState?.trumpSuit ? SUIT_LABELS[gameState.trumpSuit] : "—"}</strong>
+                    Trump: <strong>{gameState?.trumpSuit ? SUIT_LABELS[gameState.trumpSuit] : "-"}</strong>
                   </span>
-                  <span className={isYourTurn ? "text-emerald-300 font-semibold" : ""}>
+                  <span className={isYourTurn ? "font-semibold text-emerald-300" : ""}>
                     Turn:{" "}
                     <strong>
                       {isYourTurn
                         ? "Your turn!"
-                        : gameState?.players?.find((p) => p.seatIndex === gameState?.currentTurnIndex)?.name ||
+                        : gameState?.players?.find(
+                            (player) => player.seatIndex === gameState?.currentTurnIndex
+                          )?.name ||
                           gameState?.currentTurnIndex ||
-                          "—"}
+                          "-"}
                     </strong>
                   </span>
                 </div>
@@ -294,7 +420,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* ── Sidebar (desktop) / hidden on mobile since scoreboard is in top bar ── */}
             <div className="hidden flex-col gap-3 lg:flex">
               <ScoreBoard scores={gameState?.scores} />
               <Deck isShuffling={isShuffling} />
@@ -307,7 +432,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* ── Mobile bottom bar: status + deck ── */}
           <div className="flex items-start gap-2 lg:hidden">
             <Deck isShuffling={isShuffling} />
             <div className="glass-panel flex-1 rounded-xl p-2 text-xs text-slate-300">

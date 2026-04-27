@@ -192,3 +192,33 @@ input, select, textarea {
     transform: translate(10px, -10px) rotate(8deg);
   }
 }
+
+.hand-fan-pro {
+  position: relative;
+  height: 120px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+}
+
+.hand-fan-pro > * {
+  position: absolute;
+  transform-origin: bottom center;
+  transition: transform 0.25s ease;
+}
+
+.hand-fan-pro > *:nth-child(n) {
+  transform:
+    rotate(calc((var(--i) - (var(--total) - 1) / 2) * 8deg))
+    translateY(calc(abs(var(--i) - (var(--total) - 1) / 2) * 4px));
+}
+
+@keyframes subtleFloat {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(3px); }
+  100% { transform: translateY(0px); }
+}
+
+.table-float {
+  animation: subtleFloat 6s ease-in-out infinite;
+}

@@ -47,6 +47,9 @@ const dealRemainingDeck = (game) => {
 };
 
 const getTeamKey = (seatIndex) => (seatIndex % 2 === 0 ? TEAM_KEYS.TEAM_A : TEAM_KEYS.TEAM_B);
+const getTeamLabel = (seatIndex) => (seatIndex % 2 === 0 ? "Team A" : "Team B");
+const sortPlayersBySeatIndex = (players) =>
+  [...players].sort((left, right) => left.seatIndex - right.seatIndex);
 
 const determineTrickWinner = (tableCards, baseSuit, trumpSuit) => {
   const trumpCards = trumpSuit
@@ -66,13 +69,14 @@ const determineTrickWinner = (tableCards, baseSuit, trumpSuit) => {
 };
 
 export const createGameState = (roomId, players) => {
+  const orderedPlayers = sortPlayersBySeatIndex(players);
+
   return {
     roomId,
     phase: PHASES.LOBBY,
-    players: players.map((player, index) => ({
+    players: orderedPlayers.map((player) => ({
       ...player,
-      seatIndex: index,
-      team: index % 2 === 0 ? "Team A" : "Team B",
+      team: getTeamLabel(player.seatIndex),
       hand: []
     })),
     currentTurnIndex: 0,
@@ -86,6 +90,32 @@ export const createGameState = (roomId, players) => {
     },
     pendingMainDeal: false
   };
+};
+
+export const syncGamePlayers = (game, roomPlayers) => {
+  const roomPlayersById = new Map(roomPlayers.map((player) => [player.playerId, player]));
+
+  game.players = sortPlayersBySeatIndex(
+    game.players.map((player) => {
+      const roomPlayer = roomPlayersById.get(player.playerId);
+
+      if (!roomPlayer) {
+        return {
+          ...player,
+          socketId: null
+        };
+      }
+
+      return {
+        ...player,
+        name: roomPlayer.name,
+        seatIndex: roomPlayer.seatIndex,
+        socketId: roomPlayer.socketId,
+        disconnectedAt: roomPlayer.disconnectedAt ?? null,
+        team: getTeamLabel(roomPlayer.seatIndex)
+      };
+    })
+  );
 };
 
 export const startInitialDeal = (game) => {
@@ -106,20 +136,23 @@ export const startInitialDeal = (game) => {
   };
 };
 
-export const getPublicStateForSocket = (game, socketId) => {
+export const getPublicStateForPlayer = (game, playerId) => {
   const players = game.players.map((player) => {
-    const isOwner = player.id === socketId;
+    const isOwner = player.playerId === playerId;
+
     return {
-      id: player.id,
+      playerId: player.playerId,
       name: player.name,
       seatIndex: player.seatIndex,
       team: player.team,
+      isConnected: player.socketId !== null,
       hand: isOwner ? player.hand : undefined,
-      handCount: isOwner ? undefined : player.hand.length
+      handCount: player.hand.length
     };
   });
 
-  const ownerIndex = game.players.find((player) => player.id === socketId)?.seatIndex ?? null;
+  const ownerIndex =
+    game.players.find((player) => player.playerId === playerId)?.seatIndex ?? null;
 
   return {
     roomId: game.roomId,
@@ -130,20 +163,21 @@ export const getPublicStateForSocket = (game, socketId) => {
     players,
     tableCards: game.tableCards,
     scores: game.scores,
-    yourPlayerIndex: ownerIndex
+    yourPlayerIndex: ownerIndex,
+    activePlayerCount: players.filter((player) => player.isConnected).length
   };
 };
 
-export const playCardInGame = (game, socketId, cardId) => {
+export const playCardInGame = (game, playerId, cardId) => {
   if (game.phase === PHASES.FINISHED || game.phase === PHASES.LOBBY) {
     return { error: "Game is not active." };
   }
 
-  const playerIndex = game.players.findIndex((player) => player.id === socketId);
+  const playerIndex = game.players.findIndex((player) => player.playerId === playerId);
   if (playerIndex < 0) return { error: "Player not found." };
-  if (game.currentTurnIndex !== playerIndex) return { error: "Not your turn." };
 
   const player = game.players[playerIndex];
+  if (game.currentTurnIndex !== player.seatIndex) return { error: "Not your turn." };
   const card = player.hand.find((item) => item.id === cardId);
   if (!card) return { error: "Card not in hand." };
 
@@ -169,7 +203,7 @@ export const playCardInGame = (game, socketId, cardId) => {
     trumpDecided = true;
   }
 
-  game.tableCards.push({ playerIndex, card });
+  game.tableCards.push({ playerIndex: player.seatIndex, card });
 
   let trickResult = null;
   let gameOver = null;
@@ -216,7 +250,7 @@ export const playCardInGame = (game, socketId, cardId) => {
       }
     }
   } else {
-    game.currentTurnIndex = (game.currentTurnIndex + 1) % game.players.length;
+    game.currentTurnIndex = (player.seatIndex + 1) % game.players.length;
   }
 
   return { trumpDecided, trickResult, gameOver };

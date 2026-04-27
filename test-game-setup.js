@@ -21,12 +21,17 @@ async function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function buildBotPlayerId(roomId, playerName, index) {
+  return `bot:${roomId}:${index}:${playerName}`;
+}
+
 function createRoomAndPlayers(roomId, playerNames) {
   const sockets = [];
   let readyCount = 0;
 
   return new Promise((resolve) => {
     playerNames.forEach((playerName, index) => {
+      const playerId = buildBotPlayerId(roomId, playerName, index);
       const socket = io(SERVER_URL, {
         transports: ["websocket"],
         reconnection: true,
@@ -69,7 +74,7 @@ function createRoomAndPlayers(roomId, playerNames) {
       // Emit join_room event after connected
       socket.on("connect", () => {
         console.log(`✓ ${playerName} connected (Socket: ${socket.id.slice(0, 6)})`);
-        socket.emit("join_room", { roomId, name: playerName });
+        socket.emit("join_room", { roomId, name: playerName, playerId });
       });
 
       sockets.push({ socket, playerName });

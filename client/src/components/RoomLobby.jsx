@@ -20,6 +20,10 @@ export default function RoomLobby({ roomId, playerName, gameState, onStartGame, 
   };
 
   const playerCount = gameState?.players?.length || 0;
+  const activePlayerCount =
+    gameState?.activePlayerCount ??
+    gameState?.players?.filter((player) => player.isConnected).length ??
+    0;
 
   return (
     <div className="glass-panel rounded-3xl p-5 space-y-6 sm:p-8">
@@ -47,15 +51,22 @@ export default function RoomLobby({ roomId, playerName, gameState, onStartGame, 
       </div>
 
       <div className="space-y-2">
-        <p className="text-sm text-slate-400">Players ({playerCount}/4)</p>
+        <p className="text-sm text-slate-400">Active Players ({activePlayerCount}/4)</p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {gameState?.players?.map((player, idx) => (
+          {gameState?.players?.map((player) => (
             <div
-              key={idx}
-              className="bg-emerald-400/10 border border-emerald-400/30 rounded-lg p-3 text-center"
+              key={player.playerId}
+              className={`rounded-lg border p-3 text-center ${
+                player.isConnected
+                  ? "border-emerald-400/30 bg-emerald-400/10"
+                  : "border-amber-400/30 bg-amber-400/10"
+              }`}
             >
               <p className="font-semibold">{player.name}</p>
               <p className="text-xs text-slate-400">Seat {player.seatIndex + 1}</p>
+              <p className="text-xs text-slate-500">
+                {player.isConnected ? "Connected" : "Reconnecting..."}
+              </p>
             </div>
           ))}
           {playerCount < 4 &&
@@ -85,7 +96,7 @@ export default function RoomLobby({ roomId, playerName, gameState, onStartGame, 
           💬 Share on WhatsApp
         </button>
 
-        {playerCount === 4 && (
+        {playerCount === 4 && activePlayerCount === 4 && (
           <button
             onClick={onStartGame}
             className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold transition-all duration-200 transform hover:scale-105"
@@ -104,7 +115,7 @@ export default function RoomLobby({ roomId, playerName, gameState, onStartGame, 
 
       <div className="text-xs text-slate-400 text-center">
         <p>💡 Share your room code with friends to invite them</p>
-        <p>Game starts when all 4 seats are filled</p>
+        <p>Game starts only when all 4 seats are filled and connected</p>
       </div>
     </div>
   );
