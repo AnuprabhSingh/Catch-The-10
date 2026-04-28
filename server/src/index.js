@@ -5,7 +5,6 @@ import { randomUUID } from "node:crypto";
 import { Server } from "socket.io";
 import { createRoomManager } from "./roomManager.js";
 import { registerSocketHandlers } from "./socketHandlers.js";
-import { spawnBots } from "./devBots.js";
 
 // Unique ID for this server process. Changes on every restart.
 const SERVER_INSTANCE_ID = randomUUID();
@@ -27,7 +26,8 @@ app.get("/health", (req, res) => {
 });
 
 if (isDev) {
-  app.post("/dev/bot-room", (req, res) => {
+  app.post("/dev/bot-room", async (req, res) => {
+    const { spawnBots } = await import("./devBots.js");
     const roomId = randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
     const port = server.address()?.port ?? PORT;
     spawnBots(`http://127.0.0.1:${port}`, roomId);
