@@ -137,6 +137,7 @@ export const createGameState = (roomId, players) => {
     roundSummary: null,
     round: 1,
     firstTurnIndex: 0,
+    capturedTensHistory: [],
     totalScores: {
       teamA: { tens: 0, tricks: 0 },
       teamB: { tens: 0, tricks: 0 }
@@ -187,6 +188,7 @@ export const startInitialDeal = (game) => {
   game.endSummary = null;
   game.roundSummary = null;
   game.round = 1;
+  game.capturedTensHistory = [];
   game.totalScores = {
     teamA: { tens: 0, tricks: 0 },
     teamB: { tens: 0, tricks: 0 }
@@ -251,6 +253,7 @@ export const getPublicStateForPlayer = (game, playerId) => {
     endSummary: game.endSummary,
     roundSummary: game.roundSummary,
     round: game.round,
+    capturedTensHistory: game.capturedTensHistory,
     totalScores: game.totalScores,
     pendingTrick: game.pendingTrick
       ? {
@@ -340,6 +343,16 @@ export const resolveCompletedTrick = (game) => {
   const tensCapturedCards = trickCards
     .filter((entry) => entry.card.rank === "10")
     .map((entry) => ({ ...entry }));
+
+  game.capturedTensHistory.push(
+    ...tensCapturedCards.map((entry, index) => ({
+      id: `round-${game.round}-${entry.card.id}-${game.capturedTensHistory.length + index}`,
+      round: game.round,
+      playerIndex: entry.playerIndex,
+      winningTeam,
+      card: { ...entry.card }
+    }))
+  );
 
   game.scores[winningTeamKey].tens += tensCapturedCards.length;
   game.scores[winningTeamKey].tricks += 1;

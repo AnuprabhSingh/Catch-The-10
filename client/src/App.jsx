@@ -7,6 +7,7 @@ import ScoreBoard from "./components/ScoreBoard";
 import Table from "./components/Table";
 import RoomLobby from "./components/RoomLobby";
 import EndGameModal from "./components/EndGameModal";
+import TensWonPanel from "./components/TensWonPanel";
 import Landing from "./pages/Landing";
 import { SUIT_LABELS } from "./utils/cards";
 import { isMuted, playSound, setMuted } from "./utils/audioManager";
@@ -429,6 +430,7 @@ export default function App() {
   const roundSummary = gameState?.roundSummary ?? null;
   const currentRound = gameState?.round ?? 1;
   const totalScores = gameState?.totalScores ?? null;
+  const capturedTensHistory = gameState?.capturedTensHistory ?? [];
 
   const renderSeat = (seatIndex, position) => {
     const player =
@@ -644,6 +646,7 @@ export default function App() {
 
             <div className="hidden flex-col gap-3 lg:flex">
               <ScoreBoard scores={gameState?.scores} />
+              <TensWonPanel history={capturedTensHistory} />
               <Deck isShuffling={isShuffling} />
               <div className="glass-panel rounded-2xl p-3 text-sm text-slate-300 sm:rounded-3xl sm:p-4">
                 <div className="font-semibold text-slate-100">Status</div>
@@ -670,6 +673,10 @@ export default function App() {
                   : message || roundMessage || "Awaiting action."}
               </div>
             </div>
+          </div>
+
+          <div className="lg:hidden">
+            <TensWonPanel history={capturedTensHistory} />
           </div>
         </div>
       )}

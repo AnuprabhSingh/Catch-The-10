@@ -393,6 +393,8 @@ async function runStabilityTest() {
       assert.ok(client.gameOvers.length > 0, "Expected a game_over event.");
       assert.ok(client.gameEndedEvents.length > 0, "Expected a game_ended event.");
       assert.equal(client.lastState.endSummary?.winner, client.gameEndedEvents.at(-1)?.winner);
+      assert.equal(client.lastState.capturedTensHistory?.length, MAX_ROUNDS * 4);
+      assert.ok(client.lastState.capturedTensHistory.every((entry) => entry.card.rank === "10"));
       // Should have advanced through MAX_ROUNDS - 1 round boundaries
       assert.equal(client.roundStartedEvents.length, MAX_ROUNDS - 1, `Expected ${MAX_ROUNDS - 1} round_started events.`);
     });
@@ -421,6 +423,7 @@ async function runStabilityTest() {
             state.scores.teamB.tens === 0 &&
             state.scores.teamB.tricks === 0 &&
             state.endSummary === null &&
+            state.capturedTensHistory.length === 0 &&
             (yourPlayer?.hand?.length ?? 0) === 5
           );
         })
