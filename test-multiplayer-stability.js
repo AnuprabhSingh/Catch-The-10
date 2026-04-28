@@ -52,6 +52,9 @@ function createTrackedClient(serverUrl, { roomId, playerId, name }) {
     invalidMoves: [],
     joins: [],
     gameOvers: [],
+    gameEndedEvents: [],
+    gameRestartedEvents: [],
+    playerLeftEvents: [],
     stateVersion: 0,
     roundCompletions: [],
     roundResults: [],
@@ -70,6 +73,15 @@ function createTrackedClient(serverUrl, { roomId, playerId, name }) {
   });
   socket.on("game_over", (payload) => {
     tracker.gameOvers.push(payload.result);
+  });
+  socket.on("game_ended", (payload) => {
+    tracker.gameEndedEvents.push(payload);
+  });
+  socket.on("game_restarted", (payload) => {
+    tracker.gameRestartedEvents.push(payload);
+  });
+  socket.on("player_left", (payload) => {
+    tracker.playerLeftEvents.push(payload);
   });
   socket.on("round_complete", (payload) => {
     tracker.roundCompletions.push(payload);
@@ -139,6 +151,12 @@ async function main() {
     { playerId: "player-3", name: "Carol" },
     { playerId: "player-4", name: "Dave" }
   ];
+  const expectedSeatByPlayerId = {
+    "player-1": 0,
+    "player-2": 1,
+    "player-3": 2,
+    "player-4": 3
+  };
 
   const { io, server, url } = await startTestServer();
   const clients = [];
@@ -356,6 +374,67 @@ async function main() {
     activeClients.forEach((client) => {
       assert.equal(client.lastState.phase, "FINISHED");
       assert.ok(client.gameOvers.length > 0, "Expected a game_over event.");
+      assert.ok(client.gameEndedEvents.length > 0, "Expected a game_ended event.");
+      assert.equal(client.lastState.endSummary?.winner, client.gameEndedEvents.at(-1)?.winner);
+    });
+
+    const preRestartVersions = new Map(
+      activeClients.map((client) => [client.playerId, client.stateVersion])
+    );
+    activeClients[0].socket.emit("restart_game", { roomId });
+
+    await Promise.all(
+      activeClients.map((client) =>
+        waitFor(() => client.stateVersion > preRestartVersions.get(client.playerId))
+      )
+    );
+
+    await Promise.all(
+      activeClients.map((client) =>
+        waitForState(client, (state) => {
+          const yourPlayer = state.players.find((player) => player.seatIndex === state.yourPlayerIndex);
+          return (
+            state.phase === "TRUMP_DISCOVERY" &&
+            state.tableCards.length === 0 &&
+            state.pendingTrick === null &&
+            state.scores.teamA.tens === 0 &&
+            state.scores.teamA.tricks === 0 &&
+            state.scores.teamB.tens === 0 &&
+            state.scores.teamB.tricks === 0 &&
+            state.endSummary === null &&
+            (yourPlayer?.hand?.length ?? 0) === 5
+          );
+        })
+      )
+    );
+
+    activeClients.forEach((client) => {
+      assert.ok(client.gameRestartedEvents.length > 0, "Expected a game_restarted event.");
+      assert.equal(client.lastState.yourPlayerIndex, expectedSeatByPlayerId[client.playerId]);
+    });
+
+    const leavingClient = activeClients[3];
+    const remainingClients = activeClients.slice(0, 3);
+    leavingClient.socket.emit("leave_room", { roomId });
+
+    await Promise.all(
+      remainingClients.map((client) =>
+        waitForState(client, (state) => {
+          const leavingSeat = state.players.find((player) => player.playerId === leavingClient.playerId);
+          return (
+            state.phase === "FINISHED" &&
+            state.activePlayerCount === 3 &&
+            leavingSeat &&
+            leavingSeat.isConnected === false
+          );
+        })
+      )
+    );
+
+    remainingClients.forEach((client) => {
+      assert.ok(client.playerLeftEvents.length > 0, "Expected a player_left event after leave_room.");
+      assert.equal(client.playerLeftEvents.at(-1)?.playerId, leavingClient.playerId);
+      assert.equal(client.lastState.endSummary?.result, "A player left the room.");
     });
 
     console.log("Multiplayer stability test passed.");

@@ -91,6 +91,26 @@ const getGameOverMessage = (scores) => {
   return "Game is a draw.";
 };
 
+const getWinnerLabel = (scores) => {
+  if (scores.teamA.tens > scores.teamB.tens) {
+    return "Team A";
+  }
+
+  if (scores.teamB.tens > scores.teamA.tens) {
+    return "Team B";
+  }
+
+  if (scores.teamA.tricks > scores.teamB.tricks) {
+    return "Team A";
+  }
+
+  if (scores.teamB.tricks > scores.teamA.tricks) {
+    return "Team B";
+  }
+
+  return "No one";
+};
+
 export const createGameState = (roomId, players) => {
   const orderedPlayers = sortPlayersBySeatIndex(players);
 
@@ -112,7 +132,8 @@ export const createGameState = (roomId, players) => {
       teamB: { tens: 0, tricks: 0 }
     },
     pendingMainDeal: false,
-    pendingTrick: null
+    pendingTrick: null,
+    endSummary: null
   };
 };
 
@@ -155,6 +176,7 @@ export const startInitialDeal = (game) => {
   game.currentTurnIndex = 0;
   game.pendingMainDeal = false;
   game.pendingTrick = null;
+  game.endSummary = null;
   game.scores = {
     teamA: { tens: 0, tricks: 0 },
     teamB: { tens: 0, tricks: 0 }
@@ -190,6 +212,7 @@ export const getPublicStateForPlayer = (game, playerId) => {
     scores: game.scores,
     yourPlayerIndex: ownerIndex,
     activePlayerCount: players.filter((player) => player.isConnected).length,
+    endSummary: game.endSummary,
     pendingTrick: game.pendingTrick
       ? {
           resolvesAt: game.pendingTrick.resolvesAt,
@@ -297,6 +320,11 @@ export const resolveCompletedTrick = (game) => {
   if (allHandsEmpty && game.deck.length === 0) {
     game.phase = PHASES.FINISHED;
     gameOver = getGameOverMessage(game.scores);
+    game.endSummary = {
+      result: gameOver,
+      winner: getWinnerLabel(game.scores),
+      scores: game.scores
+    };
   }
 
   return {
@@ -311,6 +339,7 @@ export const resolveCompletedTrick = (game) => {
     clearTable: {
       nextTurnIndex: game.currentTurnIndex
     },
-    gameOver
+    gameOver,
+    gameEnded: game.endSummary
   };
 };

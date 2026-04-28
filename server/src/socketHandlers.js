@@ -101,6 +101,10 @@ export function registerSocketHandlers(io, socket, roomManager) {
       io.to(roomId).emit("round_result", resolution.roundResult);
       io.to(roomId).emit("clear_table", resolution.clearTable);
 
+      if (resolution.gameEnded) {
+        io.to(roomId).emit("game_ended", resolution.gameEnded);
+      }
+
       if (resolution.gameOver) {
         io.to(roomId).emit("game_over", {
           result: resolution.gameOver
@@ -180,6 +184,32 @@ export function registerSocketHandlers(io, socket, roomManager) {
     emitStateToRoom(targetRoomId);
   });
 
+  socket.on("restart_game", ({ roomId }) => {
+    const targetRoomId = `${roomId ?? socket.data.roomId ?? ""}`.trim().toUpperCase();
+    const room = roomManager.getRoom(targetRoomId);
+
+    if (!room?.game) {
+      socket.emit("invalid_move", { reason: "Game not found." });
+      return;
+    }
+
+    if (room.game.phase !== PHASES.FINISHED && room.game.phase !== PHASES.LOBBY) {
+      socket.emit("invalid_move", { reason: "Game can only be restarted after it ends." });
+      return;
+    }
+
+    const { error } = roomManager.startGame(targetRoomId);
+    if (error) {
+      socket.emit("invalid_move", { reason: error });
+      return;
+    }
+
+    clearTrickResolutionTimer(room);
+    startInitialDeal(room.game);
+    io.to(targetRoomId).emit("game_restarted", { roomId: targetRoomId });
+    emitStateToRoom(targetRoomId);
+  });
+
   socket.on("play_card", ({ roomId, cardId }) => {
     const targetRoomId = `${roomId ?? socket.data.roomId ?? ""}`.trim().toUpperCase();
     const room = roomManager.getRoom(targetRoomId);
@@ -236,6 +266,7 @@ export function registerSocketHandlers(io, socket, roomManager) {
     const targetRoomId = `${roomId ?? socket.data.roomId ?? ""}`.trim().toUpperCase();
     const room = roomManager.getRoom(targetRoomId);
     if (!room) return;
+    const leavingPlayerId = socket.data.playerId ?? null;
 
     const shouldEndGame =
       room.game?.phase &&
@@ -254,8 +285,21 @@ export function registerSocketHandlers(io, socket, roomManager) {
         syncGamePlayers(result.room.game, result.room.players);
         result.room.game.phase = PHASES.FINISHED;
         result.room.game.pendingTrick = null;
+        result.room.game.endSummary = {
+          result: "A player left the room.",
+          winner: "No one",
+          scores: result.room.game.scores
+        };
       }
 
+      io.to(targetRoomId).emit("player_left", {
+        playerId: leavingPlayerId
+      });
+      io.to(targetRoomId).emit("game_ended", {
+        result: "A player left the room.",
+        winner: "No one",
+        scores: result?.room?.game?.scores ?? null
+      });
       io.to(targetRoomId).emit("game_over", {
         result: "A player left the room."
       });
@@ -274,6 +318,9 @@ export function registerSocketHandlers(io, socket, roomManager) {
     delete socket.data.playerId;
 
     if (updatedRoom) {
+      io.to(targetRoomId).emit("player_left", {
+        playerId: leavingPlayerId
+      });
       emitStateToRoom(targetRoomId);
     }
   });

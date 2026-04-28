@@ -6,6 +6,7 @@ import PlayerSeat from "./components/PlayerSeat";
 import ScoreBoard from "./components/ScoreBoard";
 import Table from "./components/Table";
 import RoomLobby from "./components/RoomLobby";
+import EndGameModal from "./components/EndGameModal";
 import Landing from "./pages/Landing";
 import { SUIT_LABELS } from "./utils/cards";
 
@@ -69,7 +70,9 @@ export default function App() {
   const [gameState, setGameState] = useState(initialGameState);
   const [message, setMessage] = useState("");
   const [roundMessage, setRoundMessage] = useState("");
+  const [gameEndedData, setGameEndedData] = useState(initialGameState?.endSummary ?? null);
   const [isJoining, setIsJoining] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
 
   const emitJoinRoom = (session) => {
     if (!session?.roomId || !session?.playerName) {
@@ -119,6 +122,7 @@ export default function App() {
       setRoomId(joinedRoomId);
       setJoined(true);
       setMessage("");
+      setGameEndedData(null);
       setIsJoining(false);
     };
 
@@ -128,11 +132,14 @@ export default function App() {
       setInLobby(true);
       setMessage(reason || "Failed to join room.");
       setRoundMessage("");
+      setGameEndedData(null);
+      setIsRestarting(false);
       setIsJoining(false);
     };
 
     const onInvalidMove = ({ reason }) => {
       setMessage(reason || "That move is not allowed.");
+      setIsRestarting(false);
     };
 
     const onRoomClosed = () => {
@@ -144,6 +151,8 @@ export default function App() {
       setGameState(null);
       setMessage("Room closed.");
       setRoundMessage("");
+      setGameEndedData(null);
+      setIsRestarting(false);
       setIsJoining(false);
       lastJoinKeyRef.current = "";
     };
@@ -164,13 +173,39 @@ export default function App() {
       setRoundMessage(result || "");
     };
 
+    const onGameEnded = (payload) => {
+      setGameEndedData(payload);
+      setRoundMessage(payload?.result || "");
+      setIsRestarting(false);
+    };
+
+    const onGameRestarted = () => {
+      setGameEndedData(null);
+      setRoundMessage("");
+      setMessage("");
+      setIsRestarting(false);
+    };
+
+    const onPlayerLeft = ({ playerId }) => {
+      if (playerId && playerId !== getPlayerId()) {
+        setMessage("A player left the room.");
+      }
+    };
+
     const onGameState = (state) => {
       setGameState(state);
       setJoined(true);
       setInLobby(state.phase === "LOBBY");
       setMessage("");
+      setGameEndedData(state.endSummary ?? null);
+      if (state.phase !== "FINISHED" && !state.pendingTrick) {
+        setRoundMessage("");
+      }
       if (state.pendingTrick) {
         setRoundMessage("Final card played. Resolving trick...");
+      }
+      if (state.phase !== "FINISHED") {
+        setIsRestarting(false);
       }
       setIsJoining(false);
       localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(state));
@@ -186,6 +221,9 @@ export default function App() {
     s.on("round_result", onRoundResult);
     s.on("clear_table", onClearTable);
     s.on("game_over", onGameOver);
+    s.on("game_ended", onGameEnded);
+    s.on("game_restarted", onGameRestarted);
+    s.on("player_left", onPlayerLeft);
     s.on("game_state", onGameState);
 
     if (!s.connected) {
@@ -205,6 +243,9 @@ export default function App() {
       s.off("round_result", onRoundResult);
       s.off("clear_table", onClearTable);
       s.off("game_over", onGameOver);
+      s.off("game_ended", onGameEnded);
+      s.off("game_restarted", onGameRestarted);
+      s.off("player_left", onPlayerLeft);
       s.off("game_state", onGameState);
     };
   }, []);
@@ -229,6 +270,8 @@ export default function App() {
     setGameState(null);
     setMessage("");
     setRoundMessage("");
+    setGameEndedData(null);
+    setIsRestarting(false);
     emitJoinRoom(session);
   };
 
@@ -241,6 +284,8 @@ export default function App() {
     setGameState(null);
     setMessage("");
     setRoundMessage("");
+    setGameEndedData(null);
+    setIsRestarting(false);
     setIsJoining(false);
     lastJoinKeyRef.current = "";
   };
@@ -255,6 +300,14 @@ export default function App() {
     }
 
     resetSavedSession();
+  };
+
+  const restartGame = () => {
+    if (!roomId) return;
+
+    setIsRestarting(true);
+    setMessage("");
+    socketRef.current.emit("restart_game", { roomId });
   };
 
   const playCard = (card) => {
@@ -282,6 +335,9 @@ export default function App() {
     gameState?.phase === "LOBBY" &&
     activePlayerCount === 4 &&
     (gameState?.players?.length ?? 0) === 4;
+  const isFinished = gameState?.phase === "FINISHED";
+  const canReplay = isFinished && activePlayerCount === 4 && (gameState?.players?.length ?? 0) === 4;
+  const endSummary = gameEndedData ?? gameState?.endSummary ?? null;
 
   const renderSeat = (seatIndex, position) => {
     const player =
@@ -368,6 +424,14 @@ export default function App() {
 
       {joined && !inLobby && gameState && (
         <div className="mx-auto flex w-full flex-col gap-2 sm:max-w-6xl sm:gap-4">
+          <EndGameModal
+            isOpen={isFinished}
+            summary={endSummary}
+            canReplay={canReplay}
+            isRestarting={isRestarting}
+            onPlayAgain={restartGame}
+            onLeaveRoom={leaveRoom}
+          />
           <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             <div className="glass-panel flex items-center gap-3 rounded-xl px-3 py-1.5 text-[11px] sm:rounded-2xl sm:px-4 sm:py-2 sm:text-sm">
               <span className="uppercase text-slate-400">Room</span>
