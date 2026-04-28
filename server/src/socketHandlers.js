@@ -207,6 +207,7 @@ export function registerSocketHandlers(io, socket, roomManager) {
 
     clearTrickResolutionTimer(room);
     startInitialDeal(room.game);
+    roomManager.touchRoom(targetRoomId);
     io.to(targetRoomId).emit("game_restarted", { roomId: targetRoomId });
     emitStateToRoom(targetRoomId);
   });
@@ -227,6 +228,7 @@ export function registerSocketHandlers(io, socket, roomManager) {
 
     clearTrickResolutionTimer(room);
     startNextRound(room.game);
+    roomManager.touchRoom(targetRoomId);
     io.to(targetRoomId).emit("round_started", { round: room.game.round });
     emitStateToRoom(targetRoomId);
   });
@@ -253,6 +255,8 @@ export function registerSocketHandlers(io, socket, roomManager) {
       socket.emit("invalid_move", { reason: result.error });
       return;
     }
+
+    roomManager.touchRoom(targetRoomId);
 
     if (result.trumpDecided) {
       io.to(targetRoomId).emit("trump_decided", {

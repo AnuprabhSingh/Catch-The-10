@@ -84,6 +84,15 @@ setInterval(() => {
   });
 }, 10 * 1000);
 
+// Expire idle / abandoned rooms. Runs every minute.
+setInterval(() => {
+  const expiredRoomIds = roomManager.expireIdleRooms();
+  expiredRoomIds.forEach((roomId) => {
+    console.log(`[CLEANUP] Room ${roomId} expired due to inactivity.`);
+    io.to(roomId).emit("room_closed", { reason: "Room expired due to inactivity." });
+  });
+}, 60 * 1000);
+
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`Catch the Ten server running on ${PORT}`);

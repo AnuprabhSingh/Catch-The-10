@@ -5,6 +5,9 @@ export function createRoomManager() {
   const rooms = new Map();
   const MAX_PLAYERS = 4;
   const DISCONNECTED_PLAYER_TTL_MS = 60 * 1000;
+  // Idle rooms in LOBBY / FINISHED are removed after 30 min; active game rooms after 2 h.
+  const LOBBY_IDLE_TTL_MS = Number(process.env.LOBBY_IDLE_TTL_MS ?? 30 * 60 * 1000);
+  const GAME_IDLE_TTL_MS = Number(process.env.GAME_IDLE_TTL_MS ?? 2 * 60 * 60 * 1000);
   const sortBySeatIndex = (left, right) => left.seatIndex - right.seatIndex;
 
   const getRoom = (roomId) => rooms.get(roomId);
@@ -14,10 +17,18 @@ export function createRoomManager() {
       roomId,
       players: [], // { playerId, socketId, name, seatIndex }
       game: null,
-      trickResolutionTimer: null
+      trickResolutionTimer: null,
+      lastActivityAt: Date.now()
     };
     rooms.set(roomId, room);
     return room;
+  };
+
+  const touchRoom = (roomId) => {
+    const room = rooms.get(roomId);
+    if (room) {
+      room.lastActivityAt = Date.now();
+    }
   };
 
   const canPurgeDisconnectedPlayers = (room) =>
@@ -128,7 +139,7 @@ export function createRoomManager() {
 
     room.players.push(newPlayer);
     room.players.sort(sortBySeatIndex);
-
+    touchRoom(normalizedRoomId);
     return { room, player: newPlayer };
   };
 
@@ -180,7 +191,7 @@ export function createRoomManager() {
 
     room.players.sort(sortBySeatIndex);
     room.game = createGameState(roomId, room.players);
-
+    touchRoom(roomId);
     return { room };
   };
 
@@ -197,12 +208,41 @@ export function createRoomManager() {
     return changedRoomIds;
   };
 
+  /**
+   * Delete rooms that have been idle longer than their TTL.
+   * Returns the roomIds that were deleted so callers can notify connected sockets.
+   */
+  const expireIdleRooms = (now = Date.now()) => {
+    const expiredRoomIds = [];
+
+    for (const [roomId, room] of rooms.entries()) {
+      const isActiveGame =
+        room.game &&
+        room.game.phase !== PHASES.LOBBY &&
+        room.game.phase !== PHASES.FINISHED;
+      const ttl = isActiveGame ? GAME_IDLE_TTL_MS : LOBBY_IDLE_TTL_MS;
+      const idleMs = now - (room.lastActivityAt ?? 0);
+
+      if (idleMs >= ttl) {
+        if (room.trickResolutionTimer) {
+          clearTimeout(room.trickResolutionTimer);
+        }
+        rooms.delete(roomId);
+        expiredRoomIds.push(roomId);
+      }
+    }
+
+    return expiredRoomIds;
+  };
+
   return {
     getRoom,
     addPlayer,
     markPlayerDisconnected,
     removePlayer,
     startGame,
-    sweepDisconnectedPlayers
+    touchRoom,
+    sweepDisconnectedPlayers,
+    expireIdleRooms
   };
 }
