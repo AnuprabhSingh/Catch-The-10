@@ -200,7 +200,9 @@ export default function App() {
 
     const onClearTable = () => {
       setMessage("");
-      setTrickWinnerAnnouncement(null);
+      // Do NOT clear trickWinnerAnnouncement here — clear_table fires immediately
+      // after round_result in the same server flush, so the announcement would
+      // never render. It is cleared when the first card of the next trick arrives.
     };
 
     const onGameOver = ({ result }) => {
@@ -217,12 +219,14 @@ export default function App() {
       setGameEndedData(null);
       setRoundMessage("");
       setMessage("");
+      setTrickWinnerAnnouncement(null);
       setIsRestarting(false);
     };
 
     const onRoundStarted = () => {
       setRoundMessage("");
       setMessage("");
+      setTrickWinnerAnnouncement(null);
     };
 
     const onPlayerLeft = ({ playerId }) => {
@@ -242,6 +246,10 @@ export default function App() {
         clearTimeout(flashTimerRef.current);
         setFlashSeatIndex(lastEntry?.playerIndex ?? null);
         flashTimerRef.current = setTimeout(() => setFlashSeatIndex(null), 1500);
+        // First card of a new trick — dismiss the previous trick's winner toast
+        if (prevLen === 0) {
+          setTrickWinnerAnnouncement(null);
+        }
       } else if (state.tableCards.length === 0) {
         clearTimeout(flashTimerRef.current);
         setFlashSeatIndex(null);

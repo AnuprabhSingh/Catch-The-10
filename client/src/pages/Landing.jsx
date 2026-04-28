@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 const buildRoomId = () => Math.random().toString(36).slice(2, 11).toUpperCase();
+const DEV_SERVER_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const IS_DEV = import.meta.env.DEV;
 
 export default function Landing({
   connected,
@@ -15,6 +17,7 @@ export default function Landing({
   const [playerName, setPlayerName] = useState(initialPlayerName || "");
   const [roomId, setRoomId] = useState(initialRoomId || "");
   const [localMessage, setLocalMessage] = useState("");
+  const [isQuickPlaying, setIsQuickPlaying] = useState(false);
   const autoJoinRef = useRef(null);
   const hasTriggeredAutoJoinRef = useRef(false);
 
@@ -95,6 +98,25 @@ export default function Landing({
     const nextRoomId = buildRoomId();
     setRoomId(nextRoomId);
     submitJoinRequest(nextRoomId);
+  };
+
+  const handleQuickPlay = async () => {
+    if (!playerName.trim()) {
+      setLocalMessage("Please enter a player name first.");
+      setCurrentPage("signup");
+      return;
+    }
+    setIsQuickPlaying(true);
+    setLocalMessage("");
+    try {
+      const res = await fetch(`${DEV_SERVER_URL}/dev/bot-room`, { method: "POST" });
+      const { roomId: botRoomId } = await res.json();
+      submitJoinRequest(botRoomId);
+    } catch {
+      setLocalMessage("Could not start bot room. Is the server running?");
+    } finally {
+      setIsQuickPlaying(false);
+    }
   };
 
   const handleJoinRoom = () => {
@@ -228,6 +250,16 @@ export default function Landing({
               >
                 Join a Room
               </button>
+
+              {IS_DEV && (
+                <button
+                  onClick={handleQuickPlay}
+                  disabled={isQuickPlaying || !connected}
+                  className="w-full rounded-xl border border-amber-500/50 bg-amber-500/10 px-4 py-3 font-semibold text-amber-300 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 hover:border-amber-400 hover:bg-amber-500/20"
+                >
+                  {isQuickPlaying ? "Starting..." : "⚡ Quick Play (3 bots)"}
+                </button>
+              )}
 
               <button
                 onClick={() => {
