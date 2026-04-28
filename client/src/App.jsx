@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { socket } from "./socket";
 import Card from "./components/Card";
-import Deck from "./components/Deck";
 import PlayerSeat from "./components/PlayerSeat";
 import ScoreBoard from "./components/ScoreBoard";
 import Table from "./components/Table";
@@ -9,8 +8,31 @@ import RoomLobby from "./components/RoomLobby";
 import EndGameModal from "./components/EndGameModal";
 import TensWonPanel from "./components/TensWonPanel";
 import Landing from "./pages/Landing";
-import { SUIT_LABELS } from "./utils/cards";
+import { SUIT_LABELS, SUIT_SYMBOLS } from "./utils/cards";
 import { isMuted, playSound, setMuted } from "./utils/audioManager";
+
+function getStatusText(gameState, isYourTurn, message) {
+  if (message) return message;
+  if (!gameState) return "—";
+  const { phase, trumpSuit, pendingTrick, players, currentTurnIndex } = gameState;
+  if (phase === "TRUMP_DISCOVERY") {
+    if (!trumpSuit) {
+      return isYourTurn
+        ? "Play any card. If no one can follow suit, your card's suit becomes trump."
+        : "Waiting for trump suit to be decided…";
+    }
+    return `Trump is ${SUIT_LABELS[trumpSuit]} ${SUIT_SYMBOLS[trumpSuit]}. Main game starting…`;
+  }
+  if (phase === "MAIN_GAME") {
+    if (pendingTrick) return "Resolving trick…";
+    if (isYourTurn) return "Your turn — play a card.";
+    const cur = players?.find((p) => p.seatIndex === currentTurnIndex);
+    return cur ? `Waiting for ${cur.name}…` : "Waiting…";
+  }
+  if (phase === "ROUND_END") return "Round complete. Waiting for next round…";
+  if (phase === "FINISHED") return "Match over!";
+  return "—";
+}
 
 const SESSION_STORAGE_KEY = "catch10_session";
 const GAME_STORAGE_KEY = "catch10_game";
@@ -417,8 +439,7 @@ export default function App() {
     [gameState]
   );
   const isYourTurn = gameState?.currentTurnIndex === yourIndex;
-  const isShuffling =
-    gameState?.phase === "TRUMP_DISCOVERY" && Boolean(gameState?.trumpSuit);
+  const isShuffling = gameState?.phase === "TRUMP_DISCOVERY";
   const canStart =
     gameState?.phase === "LOBBY" &&
     activePlayerCount === 4 &&
@@ -428,7 +449,6 @@ export default function App() {
   const canReplay = (isFinished || isRoundEnd) && activePlayerCount === 4 && (gameState?.players?.length ?? 0) === 4;
   const endSummary = gameEndedData ?? gameState?.endSummary ?? null;
   const roundSummary = gameState?.roundSummary ?? null;
-  const currentRound = gameState?.round ?? 1;
   const totalScores = gameState?.totalScores ?? null;
   const capturedTensHistory = gameState?.capturedTensHistory ?? [];
 
@@ -603,25 +623,39 @@ export default function App() {
               </div>
 
               <div className="mt-2 rounded-xl border border-slate-800/60 bg-slate-950/70 p-2 sm:mt-4 sm:rounded-2xl sm:p-3">
-                <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[11px] sm:mb-2 sm:gap-3 sm:text-sm">
-                  <span>
-                    Base: <strong>{gameState?.baseSuit ? SUIT_LABELS[gameState.baseSuit] : "-"}</strong>
-                  </span>
-                  <span>
-                    Trump: <strong>{gameState?.trumpSuit ? SUIT_LABELS[gameState.trumpSuit] : "-"}</strong>
-                  </span>
-                  <span className={isYourTurn ? "font-semibold text-emerald-300" : ""}>
-                    Turn:{" "}
-                    <strong>
-                      {isYourTurn
-                        ? "Your turn!"
-                        : gameState?.players?.find(
-                            (player) => player.seatIndex === gameState?.currentTurnIndex
-                          )?.name ||
-                          gameState?.currentTurnIndex ||
-                          "-"}
-                    </strong>
-                  </span>
+                {/* Status row */}
+                <div className="mb-2 flex flex-wrap items-center gap-2 sm:mb-3">
+                  {/* Base suit pill */}
+                  <div className="flex items-center gap-1 rounded-lg border border-slate-700/60 bg-slate-900/60 px-2 py-0.5 text-[10px] sm:text-xs">
+                    <span className="text-slate-500 uppercase tracking-wide">Base</span>
+                    <span className="font-bold text-slate-200">
+                      {gameState?.baseSuit ? SUIT_LABELS[gameState.baseSuit] : "—"}
+                    </span>
+                  </div>
+                  {/* Trump suit pill */}
+                  <div className={`flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] sm:text-xs
+                    ${gameState?.trumpSuit
+                      ? "border-amber-500/50 bg-amber-950/50"
+                      : "border-slate-700/60 bg-slate-900/60"}`}>
+                    <span className="text-slate-500 uppercase tracking-wide">Trump</span>
+                    <span className={`font-bold ${gameState?.trumpSuit ? "text-amber-300" : "text-slate-200"}`}>
+                      {gameState?.trumpSuit ? SUIT_LABELS[gameState.trumpSuit] : "—"}
+                    </span>
+                  </div>
+                  {/* Turn pill */}
+                  <div className={`ml-auto flex items-center gap-1.5 rounded-lg border px-2.5 py-0.5 text-[10px] font-semibold sm:text-xs
+                    ${isYourTurn
+                      ? "border-emerald-500/50 bg-emerald-950/60 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.2)]"
+                      : "border-slate-700/60 bg-slate-900/60 text-slate-300"}`}>
+                    {isYourTurn && (
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                    )}
+                    {isYourTurn
+                      ? "Your turn!"
+                      : gameState?.players?.find(
+                          (player) => player.seatIndex === gameState?.currentTurnIndex
+                        )?.name || "—"}
+                  </div>
                 </div>
 
                 <div className="hand-fan">
@@ -647,31 +681,20 @@ export default function App() {
             <div className="hidden flex-col gap-3 lg:flex">
               <ScoreBoard scores={gameState?.scores} />
               <TensWonPanel history={capturedTensHistory} />
-              <Deck isShuffling={isShuffling} />
-              <div className="glass-panel rounded-2xl p-3 text-sm text-slate-300 sm:rounded-3xl sm:p-4">
-                <div className="font-semibold text-slate-100">Status</div>
-                <div className="mt-2 min-h-[40px] text-xs text-slate-400">
-                  {gameState?.phase === "TRUMP_DISCOVERY" && !gameState?.trumpSuit
-                    ? isYourTurn
-                      ? "Trump Discovery: play any card. If you can't follow suit, your card's suit becomes trump."
-                      : "Trump Discovery: waiting for players to determine trump suit."
-                    : message || roundMessage || "Awaiting action."}
+
+              {/* Status */}
+              <div className="glass-panel rounded-2xl p-3 sm:rounded-3xl sm:p-4">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Status</div>
+                <div className="min-h-[40px] text-xs leading-relaxed text-slate-300">
+                  {getStatusText(gameState, isYourTurn, message)}
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="flex items-start gap-2 lg:hidden">
-            <Deck isShuffling={isShuffling} />
-            <div className="glass-panel flex-1 rounded-xl p-2 text-xs text-slate-300">
-              <div className="font-semibold text-slate-100">Status</div>
-              <div className="mt-1 text-[11px] text-slate-400">
-                {gameState?.phase === "TRUMP_DISCOVERY" && !gameState?.trumpSuit
-                  ? isYourTurn
-                    ? "Trump Discovery: play any card. If you can't follow suit, your card's suit becomes trump."
-                    : "Trump Discovery: waiting for trump suit to be determined."
-                  : message || roundMessage || "Awaiting action."}
-              </div>
+          <div className="flex items-center gap-2 lg:hidden">
+            <div className="glass-panel flex-1 rounded-xl px-3 py-1.5 text-[11px] text-slate-300">
+              {getStatusText(gameState, isYourTurn, message)}
             </div>
           </div>
 

@@ -23,6 +23,16 @@ export default function Table({ tableCards, trumpSuit, yourIndex, highlightedPla
   return (
     <div className="relative flex h-full w-full items-center justify-center">
       <div className="table-felt absolute inset-0 rounded-[20px] sm:rounded-[28px] md:rounded-[40px]" />
+
+      {/* Subtle radial centre glow — gathering point for played cards */}
+      <div className="pointer-events-none absolute inset-0 rounded-[20px] sm:rounded-[28px] md:rounded-[40px]"
+        style={{ background: "radial-gradient(ellipse 44% 38% at 50% 50%, rgba(255,255,255,0.035) 0%, transparent 100%)" }}
+      />
+
+      {/* Centre circle */}
+      <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2
+        h-14 w-14 rounded-full border border-white/[0.06] bg-white/[0.025] sm:h-16 sm:w-16" />
+
       {trumpSuit && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="rounded-xl border border-amber-400/40 bg-slate-900/80 px-2 py-1 text-center shadow-lg backdrop-blur-sm">
