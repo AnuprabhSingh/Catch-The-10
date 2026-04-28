@@ -53,7 +53,8 @@ function makeGame({ hands = [[], [], [], []], baseSuit = null, trumpSuit = null,
     endSummary: null,
     roundSummary: null,
     round,
-    firstTurnIndex: 0
+    firstTurnIndex: 0,
+    capturedTensHistory: []
   };
 }
 
