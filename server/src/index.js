@@ -1,9 +1,13 @@
 import express from "express";
 import http from "http";
 import cors from "cors";
+import { randomUUID } from "node:crypto";
 import { Server } from "socket.io";
 import { createRoomManager } from "./roomManager.js";
 import { registerSocketHandlers } from "./socketHandlers.js";
+
+// Unique ID for this server process. Changes on every restart.
+const SERVER_INSTANCE_ID = randomUUID();
 
 const app = express();
 
@@ -34,6 +38,7 @@ const roomManager = createRoomManager();
 
 io.on("connection", (socket) => {
   console.log(`[SOCKET] New connection: ${socket.id}`);
+  socket.emit("server_hello", { instanceId: SERVER_INSTANCE_ID });
   registerSocketHandlers(io, socket, roomManager);
 });
 

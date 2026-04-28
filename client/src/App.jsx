@@ -13,6 +13,7 @@ import { SUIT_LABELS } from "./utils/cards";
 const SESSION_STORAGE_KEY = "catch10_session";
 const GAME_STORAGE_KEY = "catch10_game";
 const PLAYER_ID_STORAGE_KEY = "catch10_playerId";
+const SERVER_INSTANCE_KEY = "catch10_serverInstance";
 
 const getPlayerId = () => {
   let id = localStorage.getItem(PLAYER_ID_STORAGE_KEY);
@@ -54,6 +55,7 @@ const persistSession = (session) => {
 const clearStoredSession = () => {
   localStorage.removeItem(SESSION_STORAGE_KEY);
   localStorage.removeItem(GAME_STORAGE_KEY);
+  localStorage.removeItem(SERVER_INSTANCE_KEY);
 };
 
 export default function App() {
@@ -105,6 +107,29 @@ export default function App() {
     const onConnect = () => {
       setConnected(true);
       lastJoinKeyRef.current = "";
+      // Auto-join is deferred to onServerHello to detect server restarts first.
+    };
+
+    const onServerHello = ({ instanceId }) => {
+      const storedInstanceId = localStorage.getItem(SERVER_INSTANCE_KEY);
+
+      if (storedInstanceId && storedInstanceId !== instanceId) {
+        // Server restarted — stale session is meaningless, drop it.
+        clearStoredSession();
+        setJoined(false);
+        setInLobby(true);
+        setRoomId("");
+        setPlayerName("");
+        setGameState(null);
+        setMessage("");
+        setRoundMessage("");
+        setGameEndedData(null);
+        setIsRestarting(false);
+        setIsJoining(false);
+        lastJoinKeyRef.current = "";
+      }
+
+      localStorage.setItem(SERVER_INSTANCE_KEY, instanceId);
 
       const savedSession = readStoredSession();
       if (savedSession) {
@@ -217,6 +242,7 @@ export default function App() {
     };
 
     s.on("connect", onConnect);
+    s.on("server_hello", onServerHello);
     s.on("disconnect", onDisconnect);
     s.on("join_success", onJoinSuccess);
     s.on("join_error", onJoinError);
@@ -240,6 +266,7 @@ export default function App() {
 
     return () => {
       s.off("connect", onConnect);
+      s.off("server_hello", onServerHello);
       s.off("disconnect", onDisconnect);
       s.off("join_success", onJoinSuccess);
       s.off("join_error", onJoinError);
