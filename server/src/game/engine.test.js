@@ -350,6 +350,10 @@ describe("resolveCompletedTrick", () => {
       { playerIndex: 2, card: makeCard("HEARTS", "3") },
       { playerIndex: 3, card: makeCard("HEARTS", "9") }
     ];
+    // Add each played card to the correct player's hand
+    game.tableCards.forEach(entry => {
+      game.players[entry.playerIndex].hand.push(entry.card);
+    });
     game.pendingTrick = { resolvesAt: Date.now() - 1, lastPlayedCardPlayerIndex: 3 };
 
     const resolution = resolveCompletedTrick(game);
@@ -372,6 +376,9 @@ describe("resolveCompletedTrick", () => {
       { playerIndex: 2, card: makeCard("HEARTS", "10") }, // ten!
       { playerIndex: 3, card: makeCard("HEARTS", "5") }
     ];
+    game.tableCards.forEach(entry => {
+      game.players[entry.playerIndex].hand.push(entry.card);
+    });
     game.pendingTrick = { resolvesAt: Date.now() - 1, lastPlayedCardPlayerIndex: 3 };
 
     const resolution = resolveCompletedTrick(game);
@@ -392,6 +399,9 @@ describe("resolveCompletedTrick", () => {
       { playerIndex: 2, card: makeCard("CLUBS", "2") }, // lowest trump still wins
       { playerIndex: 3, card: makeCard("HEARTS", "Q") }
     ];
+    game.tableCards.forEach(entry => {
+      game.players[entry.playerIndex].hand.push(entry.card);
+    });
     game.pendingTrick = { resolvesAt: Date.now() - 1, lastPlayedCardPlayerIndex: 3 };
 
     const resolution = resolveCompletedTrick(game);
@@ -415,6 +425,9 @@ describe("resolveCompletedTrick", () => {
       { playerIndex: 2, card: makeCard("HEARTS", "3") },
       { playerIndex: 3, card: makeCard("HEARTS", "2") }
     ];
+    game.tableCards.forEach(entry => {
+      game.players[entry.playerIndex].hand.push(entry.card);
+    });
     game.pendingTrick = { resolvesAt: Date.now() - 1, lastPlayedCardPlayerIndex: 3 };
 
     // Give each player remaining cards so hand isn't empty after trick
