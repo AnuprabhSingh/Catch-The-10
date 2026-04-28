@@ -342,6 +342,7 @@ describe("playCardInGame — turn advancement", () => {
 describe("resolveCompletedTrick", () => {
   it("scores a trick for the winning team and clears the table", () => {
     const game = makeGame({ trumpSuit: null });
+    game.players.forEach((p) => { p.hand = []; }); // <-- Add this line
     game.baseSuit = "HEARTS";
     game.tableCards = [
       { playerIndex: 0, card: makeCard("HEARTS", "7") },
@@ -364,6 +365,7 @@ describe("resolveCompletedTrick", () => {
   it("counts captured tens and awards them to the winning team", () => {
     const game = makeGame({ trumpSuit: null });
     game.baseSuit = "HEARTS";
+    game.players.forEach((p) => { p.hand = []; }); // <-- Add this line
     game.tableCards = [
       { playerIndex: 0, card: makeCard("HEARTS", "10") }, // ten!
       { playerIndex: 1, card: makeCard("HEARTS", "A") },  // winner
@@ -383,6 +385,7 @@ describe("resolveCompletedTrick", () => {
   it("trump card wins over ace of base suit", () => {
     const game = makeGame({ trumpSuit: "CLUBS" });
     game.baseSuit = "HEARTS";
+    game.players.forEach((p) => { p.hand = []; }); // <-- Add this line
     game.tableCards = [
       { playerIndex: 0, card: makeCard("HEARTS", "A") },
       { playerIndex: 1, card: makeCard("HEARTS", "K") },
@@ -405,6 +408,7 @@ describe("resolveCompletedTrick", () => {
     const game = makeGame({ phase: "TRUMP_DISCOVERY", trumpSuit: "SPADES" });
     game.baseSuit = "HEARTS";
     game.pendingMainDeal = true;
+    game.players.forEach((p) => { p.hand = []; }); // <-- Add this line
     game.tableCards = [
       { playerIndex: 0, card: makeCard("HEARTS", "5") },
       { playerIndex: 1, card: makeCard("HEARTS", "9") }, // wins
