@@ -6,6 +6,7 @@ import http from "http";
 import { once } from "node:events";
 import { Server } from "socket.io";
 import { io as createClient } from "socket.io-client";
+import { TRICK_RESOLVE_DELAY_MS } from "./server/src/game/constants.js";
 import { createRoomManager } from "./server/src/roomManager.js";
 import { registerSocketHandlers } from "./server/src/socketHandlers.js";
 
@@ -51,7 +52,10 @@ function createTrackedClient(serverUrl, { roomId, playerId, name }) {
     invalidMoves: [],
     joins: [],
     gameOvers: [],
-    stateVersion: 0
+    stateVersion: 0,
+    roundCompletions: [],
+    roundResults: [],
+    clearTableEvents: []
   };
 
   socket.on("game_state", (state) => {
@@ -66,6 +70,15 @@ function createTrackedClient(serverUrl, { roomId, playerId, name }) {
   });
   socket.on("game_over", (payload) => {
     tracker.gameOvers.push(payload.result);
+  });
+  socket.on("round_complete", (payload) => {
+    tracker.roundCompletions.push(payload);
+  });
+  socket.on("round_result", (payload) => {
+    tracker.roundResults.push(payload);
+  });
+  socket.on("clear_table", (payload) => {
+    tracker.clearTableEvents.push(payload);
   });
 
   tracker.connectAndJoin = async () => {
@@ -221,7 +234,8 @@ async function main() {
     assert.ok(reconnectedPlayer?.hand, "Expected the reconnected player to recover their hand.");
     assert.equal(reconnectedPlayer.hand.length, handBeforeReconnect);
 
-    const reconnectCard = reconnectedPlayer.hand[0];
+    const reconnectCard = pickLegalCard(reconnectedClient.lastState);
+    assert.ok(reconnectCard, "Expected the reconnected player to have a legal card.");
     reconnectedClient.socket.emit("play_card", { roomId, cardId: reconnectCard.id });
 
     await Promise.all(
@@ -237,8 +251,87 @@ async function main() {
     );
 
     const activeClients = [clients[0], reconnectedClient, clients[2], clients[3]];
+    const stateVersionsBeforeRoundComplete = new Map(
+      activeClients.map((client) => [client.playerId, client.stateVersion])
+    );
+
+    for (let cardsNeeded = 0; cardsNeeded < 2; cardsNeeded += 1) {
+      const actingClient = activeClients.find(
+        (client) => client.lastState.yourPlayerIndex === client.lastState.currentTurnIndex
+      );
+      assert.ok(actingClient, "Expected an acting player before round completion.");
+
+      const nextCard = pickLegalCard(actingClient.lastState);
+      assert.ok(nextCard, "Expected a legal card before round completion.");
+
+      actingClient.socket.emit("play_card", { roomId, cardId: nextCard.id });
+      await Promise.all(
+        activeClients.map((client) =>
+          waitFor(() => client.stateVersion > stateVersionsBeforeRoundComplete.get(client.playerId))
+        )
+      );
+      activeClients.forEach((client) => {
+        stateVersionsBeforeRoundComplete.set(client.playerId, client.stateVersion);
+      });
+    }
+
+    await Promise.all(
+      activeClients.map((client) =>
+        waitForState(
+          client,
+          (state) => state.pendingTrick !== null && state.tableCards.length === 4 && state.currentTurnIndex === null
+        )
+      )
+    );
+
+    activeClients.forEach((client) => {
+      assert.equal(client.roundCompletions.length, 1);
+      assert.equal(client.roundCompletions[0].trickCards.length, 4);
+      assert.equal(client.lastState.pendingTrick?.lastPlayedCardPlayerIndex, 3);
+    });
+
+    await wait(TRICK_RESOLVE_DELAY_MS - 500);
+    activeClients.forEach((client) => {
+      assert.equal(client.lastState.tableCards.length, 4);
+      assert.ok(client.lastState.pendingTrick, "Expected the table to stay visible before clear.");
+      assert.equal(client.clearTableEvents.length, 0);
+    });
+
+    const pendingReconnectClient = activeClients[0];
+    pendingReconnectClient.socket.disconnect();
+    const refreshedClient = createTrackedClient(url, {
+      roomId,
+      playerId: pendingReconnectClient.playerId,
+      name: pendingReconnectClient.name
+    });
+    await refreshedClient.connectAndJoin();
+
+    assert.equal(refreshedClient.lastState.tableCards.length, 4);
+    assert.ok(refreshedClient.lastState.pendingTrick, "Expected reconnect during delay to restore the full table.");
+
+    activeClients[0] = refreshedClient;
+
+    await Promise.all(
+      activeClients.map((client) =>
+        waitForState(client, (state) => state.pendingTrick === null && state.tableCards.length === 0)
+      )
+    );
+
+    activeClients.forEach((client) => {
+      assert.equal(client.roundResults.length, 1);
+      assert.equal(client.clearTableEvents.length, 1);
+    });
 
     while (activeClients[0].lastState.phase !== "FINISHED") {
+      if (activeClients[0].lastState.pendingTrick) {
+        await Promise.all(
+          activeClients.map((client) =>
+            waitForState(client, (state) => state.pendingTrick === null)
+          )
+        );
+        continue;
+      }
+
       const actingClient = activeClients.find(
         (client) => client.lastState.yourPlayerIndex === client.lastState.currentTurnIndex
       );

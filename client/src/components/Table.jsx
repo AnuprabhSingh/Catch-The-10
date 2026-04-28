@@ -2,7 +2,7 @@ import Card from "./Card";
 
 const POSITIONS = ["bottom", "left", "top", "right"];
 
-export default function Table({ tableCards, trumpSuit, yourIndex }) {
+export default function Table({ tableCards, trumpSuit, yourIndex, highlightedPlayerIndex = null }) {
   const getRelativePosition = (playerIndex) => {
     if (yourIndex == null) return POSITIONS[playerIndex];
     const relative = (playerIndex - yourIndex + 4) % 4;
@@ -27,6 +27,7 @@ export default function Table({ tableCards, trumpSuit, yourIndex }) {
           card={cardByPosition.top}
           isTrump={cardByPosition.top?.suit === trumpSuit}
           isOnTable
+          isHighlighted={highlightedPlayerIndex != null && getRelativePosition(highlightedPlayerIndex) === "top"}
         />
       </div>
       <div className="absolute left-1 z-10 flex h-full items-center sm:left-3">
@@ -34,6 +35,7 @@ export default function Table({ tableCards, trumpSuit, yourIndex }) {
           card={cardByPosition.left}
           isTrump={cardByPosition.left?.suit === trumpSuit}
           isOnTable
+          isHighlighted={highlightedPlayerIndex != null && getRelativePosition(highlightedPlayerIndex) === "left"}
         />
       </div>
       <div className="absolute right-1 z-10 flex h-full items-center sm:right-3">
@@ -41,6 +43,7 @@ export default function Table({ tableCards, trumpSuit, yourIndex }) {
           card={cardByPosition.right}
           isTrump={cardByPosition.right?.suit === trumpSuit}
           isOnTable
+          isHighlighted={highlightedPlayerIndex != null && getRelativePosition(highlightedPlayerIndex) === "right"}
         />
       </div>
       <div className="absolute bottom-1 z-10 flex w-full justify-center sm:bottom-3">
@@ -48,6 +51,7 @@ export default function Table({ tableCards, trumpSuit, yourIndex }) {
           card={cardByPosition.bottom}
           isTrump={cardByPosition.bottom?.suit === trumpSuit}
           isOnTable
+          isHighlighted={highlightedPlayerIndex != null && getRelativePosition(highlightedPlayerIndex) === "bottom"}
         />
       </div>
     </div>

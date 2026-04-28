@@ -1,7 +1,8 @@
-import { PHASES } from "./game/constants.js";
+import { PHASES, TRICK_RESOLVE_DELAY_MS } from "./game/constants.js";
 import {
   getPublicStateForPlayer,
   playCardInGame,
+  resolveCompletedTrick,
   startInitialDeal,
   syncGamePlayers
 } from "./game/engine.js";
@@ -12,7 +13,7 @@ export function registerSocketHandlers(io, socket, roomManager) {
     [...players].sort((left, right) => left.seatIndex - right.seatIndex);
 
   const getPlayerFromSocket = (room, socketId) => {
-    return room.players.find((p) => p.socketId === socketId);
+    return room.players.find((player) => player.socketId === socketId);
   };
 
   const buildLobbyState = (room, playerId) => {
@@ -41,7 +42,8 @@ export function registerSocketHandlers(io, socket, roomManager) {
         teamB: { tens: 0, tricks: 0 }
       },
       yourPlayerIndex: ownerIndex,
-      activePlayerCount
+      activePlayerCount,
+      pendingTrick: null
     };
   };
 
@@ -64,6 +66,49 @@ export function registerSocketHandlers(io, socket, roomManager) {
         playerSocket.emit("game_state", state);
       }
     });
+  };
+
+  const clearTrickResolutionTimer = (room) => {
+    if (room?.trickResolutionTimer) {
+      clearTimeout(room.trickResolutionTimer);
+      room.trickResolutionTimer = null;
+    }
+  };
+
+  const scheduleTrickResolution = (roomId) => {
+    const room = roomManager.getRoom(roomId);
+    if (!room?.game?.pendingTrick || room.trickResolutionTimer) {
+      return;
+    }
+
+    const delayMs = Math.max(room.game.pendingTrick.resolvesAt - Date.now(), 0);
+    room.trickResolutionTimer = setTimeout(() => {
+      const liveRoom = roomManager.getRoom(roomId);
+      if (!liveRoom) return;
+
+      liveRoom.trickResolutionTimer = null;
+
+      if (!liveRoom.game || liveRoom.game.phase === PHASES.FINISHED) {
+        return;
+      }
+
+      syncGamePlayers(liveRoom.game, liveRoom.players);
+      const resolution = resolveCompletedTrick(liveRoom.game);
+      if (resolution.error) {
+        return;
+      }
+
+      io.to(roomId).emit("round_result", resolution.roundResult);
+      io.to(roomId).emit("clear_table", resolution.clearTable);
+
+      if (resolution.gameOver) {
+        io.to(roomId).emit("game_over", {
+          result: resolution.gameOver
+        });
+      }
+
+      emitStateToRoom(roomId);
+    }, delayMs);
   };
 
   socket.on("join_room", ({ roomId, name, playerId }) => {
@@ -114,8 +159,11 @@ export function registerSocketHandlers(io, socket, roomManager) {
     socket.data.playerId = playerId;
 
     socket.emit("join_success", { roomId: normalizedRoomId, rejoined });
-
     emitStateToRoom(room.roomId);
+
+    if (room.game?.pendingTrick) {
+      scheduleTrickResolution(room.roomId);
+    }
   });
 
   socket.on("start_game", ({ roomId }) => {
@@ -127,6 +175,7 @@ export function registerSocketHandlers(io, socket, roomManager) {
       return;
     }
 
+    clearTrickResolutionTimer(room);
     startInitialDeal(room.game);
     emitStateToRoom(targetRoomId);
   });
@@ -143,18 +192,12 @@ export function registerSocketHandlers(io, socket, roomManager) {
     syncGamePlayers(room.game, room.players);
 
     const player = getPlayerFromSocket(room, socket.id);
-
     if (!player) {
       socket.emit("invalid_move", { reason: "Player not found." });
       return;
     }
 
-    const result = playCardInGame(
-      room.game,
-      player.playerId, // ✅ use playerId
-      cardId
-    );
-
+    const result = playCardInGame(room.game, player.playerId, cardId);
     if (result.error) {
       socket.emit("invalid_move", { reason: result.error });
       return;
@@ -166,17 +209,15 @@ export function registerSocketHandlers(io, socket, roomManager) {
       });
     }
 
-    if (result.trickResult) {
-      io.to(targetRoomId).emit("trick_result", result.trickResult);
-    }
-
-    if (result.gameOver) {
-      io.to(targetRoomId).emit("game_over", {
-        result: result.gameOver
-      });
-    }
-
     emitStateToRoom(targetRoomId);
+
+    if (result.roundComplete) {
+      io.to(targetRoomId).emit("round_complete", {
+        ...result.roundComplete,
+        delayMs: TRICK_RESOLVE_DELAY_MS
+      });
+      scheduleTrickResolution(targetRoomId);
+    }
   });
 
   socket.on("disconnect", () => {
@@ -202,6 +243,8 @@ export function registerSocketHandlers(io, socket, roomManager) {
       room.game.phase !== PHASES.FINISHED;
 
     if (shouldEndGame) {
+      clearTrickResolutionTimer(room);
+
       const result = roomManager.markPlayerDisconnected(targetRoomId, socket.id);
       socket.leave(targetRoomId);
       delete socket.data.roomId;
@@ -210,6 +253,7 @@ export function registerSocketHandlers(io, socket, roomManager) {
       if (result?.room?.game) {
         syncGamePlayers(result.room.game, result.room.players);
         result.room.game.phase = PHASES.FINISHED;
+        result.room.game.pendingTrick = null;
       }
 
       io.to(targetRoomId).emit("game_over", {
@@ -221,6 +265,10 @@ export function registerSocketHandlers(io, socket, roomManager) {
     }
 
     const updatedRoom = roomManager.removePlayer(targetRoomId, socket.id);
+    if (updatedRoom) {
+      clearTrickResolutionTimer(updatedRoom);
+    }
+
     socket.leave(targetRoomId);
     delete socket.data.roomId;
     delete socket.data.playerId;

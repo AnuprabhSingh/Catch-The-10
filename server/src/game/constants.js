@@ -12,3 +12,5 @@ export const TEAM_KEYS = {
   TEAM_A: "teamA",
   TEAM_B: "teamB"
 };
+
+export const TRICK_RESOLVE_DELAY_MS = 3000;

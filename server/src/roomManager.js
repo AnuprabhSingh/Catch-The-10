@@ -13,7 +13,8 @@ export function createRoomManager() {
     const room = {
       roomId,
       players: [], // { playerId, socketId, name, seatIndex }
-      game: null
+      game: null,
+      trickResolutionTimer: null
     };
     rooms.set(roomId, room);
     return room;
@@ -51,6 +52,9 @@ export function createRoomManager() {
       room.players.length === 0 &&
       (!room.game || room.game.phase === PHASES.LOBBY || room.game.phase === PHASES.FINISHED)
     ) {
+      if (room.trickResolutionTimer) {
+        clearTimeout(room.trickResolutionTimer);
+      }
       rooms.delete(roomId);
       return { room: null, removedPlayerIds };
     }
@@ -153,6 +157,9 @@ export function createRoomManager() {
       room.players.length === 0 &&
       (!room.game || room.game.phase === PHASES.LOBBY || room.game.phase === PHASES.FINISHED)
     ) {
+      if (room.trickResolutionTimer) {
+        clearTimeout(room.trickResolutionTimer);
+      }
       rooms.delete(roomId);
       return null;
     }

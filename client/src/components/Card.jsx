@@ -6,6 +6,7 @@ export default function Card({
   onClick,
   isTrump,
   isDimmed,
+  isHighlighted = false,
   isOnTable = false,
   dealDelay = 0,
   style
@@ -41,6 +42,7 @@ export default function Card({
       className={`card-root relative flex ${sizeClasses} flex-col items-center justify-between rounded-lg border px-1 py-1 text-xs font-semibold transition active:scale-95 sm:rounded-xl sm:px-2 sm:py-1.5
         ${isClickable ? "cursor-pointer hover:-translate-y-1 hover:border-emerald-400 active:border-emerald-400" : "cursor-default"}
         ${isTrump ? "border-amber-400/80 shadow-[0_0_0_2px_rgba(251,191,36,0.3)]" : "border-slate-700/60"}
+        ${isHighlighted ? "ring-2 ring-sky-300/80 shadow-[0_0_20px_rgba(125,211,252,0.35)]" : ""}
         ${isDimmed ? "opacity-60" : "opacity-100"}
         ${isOnTable ? "card-table" : ""}
         ${dealDelay ? "card-deal" : ""}

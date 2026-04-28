@@ -1,4 +1,4 @@
-import { PHASES, RANKS, SUITS, TEAM_KEYS } from "./constants.js";
+import { PHASES, RANKS, SUITS, TEAM_KEYS, TRICK_RESOLVE_DELAY_MS } from "./constants.js";
 
 const rankValues = RANKS.reduce((acc, rank, index) => {
   acc[rank] = index + 2;
@@ -8,11 +8,13 @@ const rankValues = RANKS.reduce((acc, rank, index) => {
 const createDeck = () => {
   const deck = [];
   let idCounter = 0;
+
   SUITS.forEach((suit) => {
     RANKS.forEach((rank) => {
       deck.push({ id: `${suit}-${rank}-${idCounter++}`, suit, rank });
     });
   });
+
   return deck;
 };
 
@@ -39,6 +41,7 @@ const dealCards = (game, countPerPlayer) => {
 const dealRemainingDeck = (game) => {
   game.deck = shuffle(game.deck);
   let seatIndex = 0;
+
   while (game.deck.length) {
     const card = game.deck.shift();
     game.players[seatIndex].hand.push(card);
@@ -68,6 +71,26 @@ const determineTrickWinner = (tableCards, baseSuit, trumpSuit) => {
   );
 };
 
+const getGameOverMessage = (scores) => {
+  if (scores.teamA.tens > scores.teamB.tens) {
+    return "Team A wins by 10s.";
+  }
+
+  if (scores.teamB.tens > scores.teamA.tens) {
+    return "Team B wins by 10s.";
+  }
+
+  if (scores.teamA.tricks > scores.teamB.tricks) {
+    return "Team A wins by tricks.";
+  }
+
+  if (scores.teamB.tricks > scores.teamA.tricks) {
+    return "Team B wins by tricks.";
+  }
+
+  return "Game is a draw.";
+};
+
 export const createGameState = (roomId, players) => {
   const orderedPlayers = sortPlayersBySeatIndex(players);
 
@@ -88,7 +111,8 @@ export const createGameState = (roomId, players) => {
       teamA: { tens: 0, tricks: 0 },
       teamB: { tens: 0, tricks: 0 }
     },
-    pendingMainDeal: false
+    pendingMainDeal: false,
+    pendingTrick: null
   };
 };
 
@@ -130,6 +154,7 @@ export const startInitialDeal = (game) => {
   game.tableCards = [];
   game.currentTurnIndex = 0;
   game.pendingMainDeal = false;
+  game.pendingTrick = null;
   game.scores = {
     teamA: { tens: 0, tricks: 0 },
     teamB: { tens: 0, tricks: 0 }
@@ -164,7 +189,13 @@ export const getPublicStateForPlayer = (game, playerId) => {
     tableCards: game.tableCards,
     scores: game.scores,
     yourPlayerIndex: ownerIndex,
-    activePlayerCount: players.filter((player) => player.isConnected).length
+    activePlayerCount: players.filter((player) => player.isConnected).length,
+    pendingTrick: game.pendingTrick
+      ? {
+          resolvesAt: game.pendingTrick.resolvesAt,
+          lastPlayedCardPlayerIndex: game.pendingTrick.lastPlayedCardPlayerIndex
+        }
+      : null
   };
 };
 
@@ -173,11 +204,16 @@ export const playCardInGame = (game, playerId, cardId) => {
     return { error: "Game is not active." };
   }
 
+  if (game.pendingTrick) {
+    return { error: "Wait for the current trick to resolve." };
+  }
+
   const playerIndex = game.players.findIndex((player) => player.playerId === playerId);
   if (playerIndex < 0) return { error: "Player not found." };
 
   const player = game.players[playerIndex];
   if (game.currentTurnIndex !== player.seatIndex) return { error: "Not your turn." };
+
   const card = player.hand.find((item) => item.id === cardId);
   if (!card) return { error: "Card not in hand." };
 
@@ -205,53 +241,76 @@ export const playCardInGame = (game, playerId, cardId) => {
 
   game.tableCards.push({ playerIndex: player.seatIndex, card });
 
-  let trickResult = null;
-  let gameOver = null;
-
+  let roundComplete = null;
   if (game.tableCards.length === 4) {
-    const winnerEntry = determineTrickWinner(game.tableCards, game.baseSuit, game.trumpSuit);
-    const winningTeam = getTeamKey(winnerEntry.playerIndex);
-
-    const tensCaptured = game.tableCards.filter((entry) => entry.card.rank === "10").length;
-    game.scores[winningTeam].tens += tensCaptured;
-    game.scores[winningTeam].tricks += 1;
-
-    trickResult = {
-      winnerIndex: winnerEntry.playerIndex,
-      tensCaptured,
-      message: `Trick won by Player ${winnerEntry.playerIndex}`
+    game.currentTurnIndex = null;
+    game.pendingTrick = {
+      resolvesAt: Date.now() + TRICK_RESOLVE_DELAY_MS,
+      lastPlayedCardPlayerIndex: player.seatIndex
     };
-
-    game.tableCards = [];
-    game.baseSuit = null;
-    game.currentTurnIndex = winnerEntry.playerIndex;
-
-    const allHandsEmpty = game.players.every((p) => p.hand.length === 0);
-
-    // After the trick where trump is decided finishes, deal the remaining deck.
-    if (game.pendingMainDeal && game.phase === PHASES.TRUMP_DISCOVERY) {
-      dealRemainingDeck(game);
-      game.phase = PHASES.MAIN_GAME;
-      game.pendingMainDeal = false;
-    }
-
-    if (allHandsEmpty && game.deck.length === 0) {
-      game.phase = PHASES.FINISHED;
-      if (game.scores.teamA.tens > game.scores.teamB.tens) {
-        gameOver = "Team A wins by 10s.";
-      } else if (game.scores.teamB.tens > game.scores.teamA.tens) {
-        gameOver = "Team B wins by 10s.";
-      } else if (game.scores.teamA.tricks > game.scores.teamB.tricks) {
-        gameOver = "Team A wins by tricks.";
-      } else if (game.scores.teamB.tricks > game.scores.teamA.tricks) {
-        gameOver = "Team B wins by tricks.";
-      } else {
-        gameOver = "Game is a draw.";
-      }
-    }
+    roundComplete = {
+      trickCards: game.tableCards.map((entry) => ({
+        playerIndex: entry.playerIndex,
+        card: { ...entry.card }
+      })),
+      resolvesAt: game.pendingTrick.resolvesAt,
+      lastPlayedCardPlayerIndex: player.seatIndex
+    };
   } else {
     game.currentTurnIndex = (player.seatIndex + 1) % game.players.length;
   }
 
-  return { trumpDecided, trickResult, gameOver };
+  return { trumpDecided, roundComplete };
+};
+
+export const resolveCompletedTrick = (game) => {
+  if (!game.pendingTrick || game.tableCards.length !== 4) {
+    return { error: "No completed trick is waiting to resolve." };
+  }
+
+  const trickCards = game.tableCards.map((entry) => ({
+    playerIndex: entry.playerIndex,
+    card: { ...entry.card }
+  }));
+  const winnerEntry = determineTrickWinner(trickCards, game.baseSuit, game.trumpSuit);
+  const winningTeamKey = getTeamKey(winnerEntry.playerIndex);
+  const winningTeam = getTeamLabel(winnerEntry.playerIndex);
+  const tensCapturedCards = trickCards
+    .filter((entry) => entry.card.rank === "10")
+    .map((entry) => ({ ...entry }));
+
+  game.scores[winningTeamKey].tens += tensCapturedCards.length;
+  game.scores[winningTeamKey].tricks += 1;
+  game.tableCards = [];
+  game.baseSuit = null;
+  game.currentTurnIndex = winnerEntry.playerIndex;
+  game.pendingTrick = null;
+
+  if (game.pendingMainDeal && game.phase === PHASES.TRUMP_DISCOVERY) {
+    dealRemainingDeck(game);
+    game.phase = PHASES.MAIN_GAME;
+    game.pendingMainDeal = false;
+  }
+
+  let gameOver = null;
+  const allHandsEmpty = game.players.every((player) => player.hand.length === 0);
+  if (allHandsEmpty && game.deck.length === 0) {
+    game.phase = PHASES.FINISHED;
+    gameOver = getGameOverMessage(game.scores);
+  }
+
+  return {
+    roundResult: {
+      winnerIndex: winnerEntry.playerIndex,
+      winningTeam,
+      tensCaptured: tensCapturedCards.length,
+      tensCapturedCards,
+      trickCards,
+      message: `Trick won by ${winningTeam}`
+    },
+    clearTable: {
+      nextTurnIndex: game.currentTurnIndex
+    },
+    gameOver
+  };
 };

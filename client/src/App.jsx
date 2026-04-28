@@ -68,6 +68,7 @@ export default function App() {
   const [inLobby, setInLobby] = useState(initialGameState?.phase !== "LOBBY" ? false : true);
   const [gameState, setGameState] = useState(initialGameState);
   const [message, setMessage] = useState("");
+  const [roundMessage, setRoundMessage] = useState("");
   const [isJoining, setIsJoining] = useState(false);
 
   const emitJoinRoom = (session) => {
@@ -126,6 +127,7 @@ export default function App() {
       setGameState(null);
       setInLobby(true);
       setMessage(reason || "Failed to join room.");
+      setRoundMessage("");
       setIsJoining(false);
     };
 
@@ -141,8 +143,25 @@ export default function App() {
       setPlayerName("");
       setGameState(null);
       setMessage("Room closed.");
+      setRoundMessage("");
       setIsJoining(false);
       lastJoinKeyRef.current = "";
+    };
+
+    const onRoundComplete = () => {
+      setRoundMessage("Final card played. Resolving trick...");
+    };
+
+    const onRoundResult = ({ message: resultMessage }) => {
+      setRoundMessage(resultMessage || "Trick resolved.");
+    };
+
+    const onClearTable = () => {
+      setMessage("");
+    };
+
+    const onGameOver = ({ result }) => {
+      setRoundMessage(result || "");
     };
 
     const onGameState = (state) => {
@@ -150,6 +169,9 @@ export default function App() {
       setJoined(true);
       setInLobby(state.phase === "LOBBY");
       setMessage("");
+      if (state.pendingTrick) {
+        setRoundMessage("Final card played. Resolving trick...");
+      }
       setIsJoining(false);
       localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(state));
     };
@@ -160,6 +182,10 @@ export default function App() {
     s.on("join_error", onJoinError);
     s.on("invalid_move", onInvalidMove);
     s.on("room_closed", onRoomClosed);
+    s.on("round_complete", onRoundComplete);
+    s.on("round_result", onRoundResult);
+    s.on("clear_table", onClearTable);
+    s.on("game_over", onGameOver);
     s.on("game_state", onGameState);
 
     if (!s.connected) {
@@ -175,6 +201,10 @@ export default function App() {
       s.off("join_error", onJoinError);
       s.off("invalid_move", onInvalidMove);
       s.off("room_closed", onRoomClosed);
+      s.off("round_complete", onRoundComplete);
+      s.off("round_result", onRoundResult);
+      s.off("clear_table", onClearTable);
+      s.off("game_over", onGameOver);
       s.off("game_state", onGameState);
     };
   }, []);
@@ -198,6 +228,7 @@ export default function App() {
     setInLobby(true);
     setGameState(null);
     setMessage("");
+    setRoundMessage("");
     emitJoinRoom(session);
   };
 
@@ -209,6 +240,7 @@ export default function App() {
     setInLobby(true);
     setGameState(null);
     setMessage("");
+    setRoundMessage("");
     setIsJoining(false);
     lastJoinKeyRef.current = "";
   };
@@ -369,6 +401,7 @@ export default function App() {
                     tableCards={gameState?.tableCards || []}
                     trumpSuit={gameState?.trumpSuit}
                     yourIndex={yourIndex}
+                    highlightedPlayerIndex={gameState?.pendingTrick?.lastPlayedCardPlayerIndex ?? null}
                   />
                 </div>
 
@@ -426,7 +459,7 @@ export default function App() {
               <div className="glass-panel rounded-2xl p-3 text-sm text-slate-300 sm:rounded-3xl sm:p-4">
                 <div className="font-semibold text-slate-100">Status</div>
                 <div className="mt-2 min-h-[40px] text-xs text-slate-400">
-                  {message || "Awaiting action."}
+                  {message || roundMessage || "Awaiting action."}
                 </div>
               </div>
             </div>
@@ -437,7 +470,7 @@ export default function App() {
             <div className="glass-panel flex-1 rounded-xl p-2 text-xs text-slate-300">
               <div className="font-semibold text-slate-100">Status</div>
               <div className="mt-1 text-[11px] text-slate-400">
-                {message || "Awaiting action."}
+                {message || roundMessage || "Awaiting action."}
               </div>
             </div>
           </div>
