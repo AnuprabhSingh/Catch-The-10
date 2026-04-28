@@ -24,8 +24,8 @@ export default function Card({
   };
 
   const sizeClasses = isOnTable
-    ? "h-14 w-10 sm:h-18 sm:w-13 md:h-22 md:w-15"
-    : "h-16 w-12 sm:h-20 sm:w-14 md:h-24 md:w-16";
+    ? "h-30 w-20 sm:h-30 sm:w-20 md:h-30 md:w-20"
+    : "h-30 w-20 sm:h-30 sm:w-20 md:h-30 md:w-20";
 
   // --- PNG path logic ---
   // Example: public/cards_images/10_of_hearts.png for 10 of Hearts
