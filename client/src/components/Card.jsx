@@ -27,6 +27,11 @@ export default function Card({
     ? "h-14 w-10 sm:h-18 sm:w-13 md:h-22 md:w-15"
     : "h-16 w-12 sm:h-20 sm:w-14 md:h-24 md:w-16";
 
+  // --- PNG path logic ---
+  // Example: public/cards_images/10_of_hearts.png for 10 of Hearts
+  const card_suit_lower = (card.suit).toLowerCase();
+  const imgSrc = `/cards_images/${card.rank}_of_${card_suit_lower}.png`;
+
   return (
     <button
       type="button"
@@ -41,9 +46,12 @@ export default function Card({
         ${dealDelay ? "card-deal" : ""}
         bg-slate-900/80`}
     >
-      <span className={`${suitColor} text-[10px] leading-none sm:text-sm md:text-base`}>{card.rank}</span>
-      <span className={`${suitColor} text-sm leading-none sm:text-lg md:text-xl`}>{SUIT_SYMBOLS[card.suit]}</span>
-      <span className={`${suitColor} text-[7px] leading-none sm:text-[10px] md:text-xs`}>{card.rank}</span>
+      <img
+        src={imgSrc}
+        alt={`${card.rank} of ${card.suit}`}
+        className="w-full h-full object-contain pointer-events-none select-none"
+        draggable={false}
+      />
     </button>
   );
 }
