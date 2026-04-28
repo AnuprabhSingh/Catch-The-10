@@ -17,6 +17,12 @@ export default function PlayerSeat({ player, isCurrent, isYou, position }) {
       <div className="truncate text-[9px] leading-tight text-slate-500 sm:text-[10px]">
         {player ? `${player.team} · ${player.handCount ?? player.hand?.length ?? 0}` : ""}
       </div>
+      {player && !player.isConnected && (
+        <div className="flex items-center gap-0.5 text-[9px] leading-tight text-amber-400 sm:text-[10px]">
+          <span>⚠</span>
+          <span>disconnected</span>
+        </div>
+      )}
     </div>
   );
 }

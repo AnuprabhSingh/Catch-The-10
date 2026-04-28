@@ -63,6 +63,9 @@ export default function App() {
   const initialGameState = readStoredGameState();
   const socketRef = useRef(socket);
   const lastJoinKeyRef = useRef("");
+  const gameStateRef = useRef(initialGameState);
+  const flashTimerRef = useRef(null);
+  const prevTableLenRef = useRef(initialGameState?.tableCards?.length ?? 0);
 
   const [connected, setConnected] = useState(socket.connected);
   const [roomId, setRoomId] = useState(initialSession?.roomId ?? "");
@@ -75,6 +78,8 @@ export default function App() {
   const [gameEndedData, setGameEndedData] = useState(initialGameState?.endSummary ?? null);
   const [isJoining, setIsJoining] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [trickWinnerAnnouncement, setTrickWinnerAnnouncement] = useState(null);
+  const [flashSeatIndex, setFlashSeatIndex] = useState(null);
 
   const emitJoinRoom = (session) => {
     if (!session?.roomId || !session?.playerName) {
@@ -186,12 +191,16 @@ export default function App() {
       setRoundMessage("Final card played. Resolving trick...");
     };
 
-    const onRoundResult = ({ message: resultMessage }) => {
+    const onRoundResult = ({ message: resultMessage, winnerIndex, winningTeam }) => {
       setRoundMessage(resultMessage || "Trick resolved.");
+      const currentState = gameStateRef.current;
+      const winner = currentState?.players?.find((p) => p.seatIndex === winnerIndex);
+      setTrickWinnerAnnouncement(winner?.name ?? winningTeam ?? "Unknown");
     };
 
     const onClearTable = () => {
       setMessage("");
+      setTrickWinnerAnnouncement(null);
     };
 
     const onGameOver = ({ result }) => {
@@ -223,6 +232,21 @@ export default function App() {
     };
 
     const onGameState = (state) => {
+      gameStateRef.current = state;
+
+      const prevLen = prevTableLenRef.current;
+      prevTableLenRef.current = state.tableCards.length;
+
+      if (!state.pendingTrick && state.tableCards.length > prevLen) {
+        const lastEntry = state.tableCards.at(-1);
+        clearTimeout(flashTimerRef.current);
+        setFlashSeatIndex(lastEntry?.playerIndex ?? null);
+        flashTimerRef.current = setTimeout(() => setFlashSeatIndex(null), 1500);
+      } else if (state.tableCards.length === 0) {
+        clearTimeout(flashTimerRef.current);
+        setFlashSeatIndex(null);
+      }
+
       setGameState(state);
       setJoined(true);
       setInLobby(state.phase === "LOBBY");
@@ -265,6 +289,7 @@ export default function App() {
     }
 
     return () => {
+      clearTimeout(flashTimerRef.current);
       s.off("connect", onConnect);
       s.off("server_hello", onServerHello);
       s.off("disconnect", onDisconnect);
@@ -489,13 +514,10 @@ export default function App() {
               <span className="uppercase text-slate-400">Room</span>
               <span className="font-semibold">{gameState?.roomId || roomId}</span>
               <span className="text-slate-600">|</span>
-              <span className="uppercase text-slate-400">Round</span>
-              <span className="font-semibold">{currentRound}/5</span>
-              <span className="text-slate-600">|</span>
               <span className="uppercase text-slate-400">Phase</span>
               <span className="font-semibold">{gameState?.phase || "LOBBY"}</span>
             </div>
-            <ScoreBoard scores={totalScores ?? gameState?.scores} compact />
+            <ScoreBoard scores={gameState?.scores} compact />
             {canStart && (
               <button
                 type="button"
@@ -520,8 +542,20 @@ export default function App() {
                     tableCards={gameState?.tableCards || []}
                     trumpSuit={gameState?.trumpSuit}
                     yourIndex={yourIndex}
-                    highlightedPlayerIndex={gameState?.pendingTrick?.lastPlayedCardPlayerIndex ?? null}
+                    highlightedPlayerIndex={
+                      gameState?.pendingTrick != null
+                        ? gameState.pendingTrick.lastPlayedCardPlayerIndex
+                        : flashSeatIndex
+                    }
                   />
+                  {trickWinnerAnnouncement && (
+                    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+                      <div className="trick-announce rounded-2xl border border-emerald-400/40 bg-slate-900/90 px-3 py-2 text-center shadow-xl backdrop-blur-sm">
+                        <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Trick won by</div>
+                        <div className="text-sm font-bold text-emerald-300">{trickWinnerAnnouncement}</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col items-end justify-between gap-1 py-1 sm:gap-4 sm:py-2">
@@ -573,7 +607,7 @@ export default function App() {
             </div>
 
             <div className="hidden flex-col gap-3 lg:flex">
-              <ScoreBoard scores={totalScores ?? gameState?.scores} />
+              <ScoreBoard scores={gameState?.scores} />
               <Deck isShuffling={isShuffling} />
               <div className="glass-panel rounded-2xl p-3 text-sm text-slate-300 sm:rounded-3xl sm:p-4">
                 <div className="font-semibold text-slate-100">Status</div>
