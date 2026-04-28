@@ -9,6 +9,7 @@ import RoomLobby from "./components/RoomLobby";
 import EndGameModal from "./components/EndGameModal";
 import Landing from "./pages/Landing";
 import { SUIT_LABELS } from "./utils/cards";
+import { isMuted, playSound, setMuted } from "./utils/audioManager";
 
 const SESSION_STORAGE_KEY = "catch10_session";
 const GAME_STORAGE_KEY = "catch10_game";
@@ -66,6 +67,7 @@ export default function App() {
   const gameStateRef = useRef(initialGameState);
   const flashTimerRef = useRef(null);
   const prevTableLenRef = useRef(initialGameState?.tableCards?.length ?? 0);
+  const prevTrumpRef = useRef(initialGameState?.trumpSuit ?? null);
 
   const [connected, setConnected] = useState(socket.connected);
   const [roomId, setRoomId] = useState(initialSession?.roomId ?? "");
@@ -80,6 +82,7 @@ export default function App() {
   const [isRestarting, setIsRestarting] = useState(false);
   const [trickWinnerAnnouncement, setTrickWinnerAnnouncement] = useState(null);
   const [flashSeatIndex, setFlashSeatIndex] = useState(null);
+  const [soundMuted, setSoundMuted] = useState(isMuted());
 
   const emitJoinRoom = (session) => {
     if (!session?.roomId || !session?.playerName) {
@@ -196,6 +199,8 @@ export default function App() {
       const currentState = gameStateRef.current;
       const winner = currentState?.players?.find((p) => p.seatIndex === winnerIndex);
       setTrickWinnerAnnouncement(winner?.name ?? winningTeam ?? "Unknown");
+      // Play a richer sound if tens were captured, otherwise standard trick win
+      playSound("score");
     };
 
     const onClearTable = () => {
@@ -213,6 +218,7 @@ export default function App() {
       setGameEndedData(payload);
       setRoundMessage(payload?.result || "");
       setIsRestarting(false);
+      playSound("gameOver", 0.7);
     };
 
     const onGameRestarted = () => {
@@ -227,6 +233,8 @@ export default function App() {
       setRoundMessage("");
       setMessage("");
       setTrickWinnerAnnouncement(null);
+      prevTrumpRef.current = null; // reset so trump sound fires again next round
+      playSound("deal");
     };
 
     const onPlayerLeft = ({ playerId }) => {
@@ -241,6 +249,12 @@ export default function App() {
       const prevLen = prevTableLenRef.current;
       prevTableLenRef.current = state.tableCards.length;
 
+      // Trump suit revealed for the first time this round
+      if (state.trumpSuit && !prevTrumpRef.current) {
+        playSound("catch", 0.7);
+      }
+      prevTrumpRef.current = state.trumpSuit ?? null;
+
       if (!state.pendingTrick && state.tableCards.length > prevLen) {
         const lastEntry = state.tableCards.at(-1);
         clearTimeout(flashTimerRef.current);
@@ -250,6 +264,8 @@ export default function App() {
         if (prevLen === 0) {
           setTrickWinnerAnnouncement(null);
         }
+        // Card landed on table
+        playSound("card");
       } else if (state.tableCards.length === 0) {
         clearTimeout(flashTimerRef.current);
         setFlashSeatIndex(null);
@@ -526,6 +542,18 @@ export default function App() {
               <span className="font-semibold">{gameState?.phase || "LOBBY"}</span>
             </div>
             <ScoreBoard scores={gameState?.scores} compact />
+            <button
+              type="button"
+              onClick={() => {
+                const next = !soundMuted;
+                setMuted(next);
+                setSoundMuted(next);
+              }}
+              className="rounded-xl border border-slate-600 bg-slate-800/60 px-2 py-1.5 text-lg leading-none transition hover:border-slate-400 sm:px-3 sm:py-2"
+              title={soundMuted ? "Unmute sounds" : "Mute sounds"}
+            >
+              {soundMuted ? "🔇" : "🔊"}
+            </button>
             {canStart && (
               <button
                 type="button"
