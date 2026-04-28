@@ -1,4 +1,4 @@
-import { PHASES, RANKS, SUITS, TEAM_KEYS, TRICK_RESOLVE_DELAY_MS } from "./constants.js";
+import { MAX_ROUNDS, PHASES, RANKS, SUITS, TEAM_KEYS, TRICK_RESOLVE_DELAY_MS } from "./constants.js";
 
 const rankValues = RANKS.reduce((acc, rank, index) => {
   acc[rank] = index + 2;
@@ -54,7 +54,7 @@ const getTeamLabel = (seatIndex) => (seatIndex % 2 === 0 ? "Team A" : "Team B");
 const sortPlayersBySeatIndex = (players) =>
   [...players].sort((left, right) => left.seatIndex - right.seatIndex);
 
-const determineTrickWinner = (tableCards, baseSuit, trumpSuit) => {
+export const determineTrickWinner = (tableCards, baseSuit, trumpSuit) => {
   const trumpCards = trumpSuit
     ? tableCards.filter((entry) => entry.card.suit === trumpSuit)
     : [];
@@ -71,7 +71,7 @@ const determineTrickWinner = (tableCards, baseSuit, trumpSuit) => {
   );
 };
 
-const getGameOverMessage = (scores) => {
+export const getGameOverMessage = (scores) => {
   if (scores.teamA.tens > scores.teamB.tens) {
     return "Team A wins by 10s.";
   }
@@ -91,7 +91,7 @@ const getGameOverMessage = (scores) => {
   return "Game is a draw.";
 };
 
-const getWinnerLabel = (scores) => {
+export const getWinnerLabel = (scores) => {
   if (scores.teamA.tens > scores.teamB.tens) {
     return "Team A";
   }
@@ -133,7 +133,14 @@ export const createGameState = (roomId, players) => {
     },
     pendingMainDeal: false,
     pendingTrick: null,
-    endSummary: null
+    endSummary: null,
+    roundSummary: null,
+    round: 1,
+    firstTurnIndex: 0,
+    totalScores: {
+      teamA: { tens: 0, tricks: 0 },
+      teamB: { tens: 0, tricks: 0 }
+    }
   };
 };
 
@@ -174,9 +181,38 @@ export const startInitialDeal = (game) => {
   game.trumpSuit = null;
   game.tableCards = [];
   game.currentTurnIndex = 0;
+  game.firstTurnIndex = 0;
   game.pendingMainDeal = false;
   game.pendingTrick = null;
   game.endSummary = null;
+  game.roundSummary = null;
+  game.round = 1;
+  game.totalScores = {
+    teamA: { tens: 0, tricks: 0 },
+    teamB: { tens: 0, tricks: 0 }
+  };
+  game.scores = {
+    teamA: { tens: 0, tricks: 0 },
+    teamB: { tens: 0, tricks: 0 }
+  };
+};
+
+export const startNextRound = (game) => {
+  game.firstTurnIndex = (game.firstTurnIndex + 1) % 4;
+  game.round += 1;
+  game.deck = shuffle(createDeck());
+  game.players.forEach((player) => {
+    player.hand = [];
+  });
+  dealCards(game, 5);
+  game.phase = PHASES.TRUMP_DISCOVERY;
+  game.baseSuit = null;
+  game.trumpSuit = null;
+  game.tableCards = [];
+  game.currentTurnIndex = game.firstTurnIndex;
+  game.pendingMainDeal = false;
+  game.pendingTrick = null;
+  game.roundSummary = null;
   game.scores = {
     teamA: { tens: 0, tricks: 0 },
     teamB: { tens: 0, tricks: 0 }
@@ -213,6 +249,9 @@ export const getPublicStateForPlayer = (game, playerId) => {
     yourPlayerIndex: ownerIndex,
     activePlayerCount: players.filter((player) => player.isConnected).length,
     endSummary: game.endSummary,
+    roundSummary: game.roundSummary,
+    round: game.round,
+    totalScores: game.totalScores,
     pendingTrick: game.pendingTrick
       ? {
           resolvesAt: game.pendingTrick.resolvesAt,
@@ -318,13 +357,38 @@ export const resolveCompletedTrick = (game) => {
   let gameOver = null;
   const allHandsEmpty = game.players.every((player) => player.hand.length === 0);
   if (allHandsEmpty && game.deck.length === 0) {
-    game.phase = PHASES.FINISHED;
-    gameOver = getGameOverMessage(game.scores);
-    game.endSummary = {
-      result: gameOver,
-      winner: getWinnerLabel(game.scores),
-      scores: game.scores
-    };
+    // Accumulate this round's scores into totalScores
+    game.totalScores.teamA.tens += game.scores.teamA.tens;
+    game.totalScores.teamA.tricks += game.scores.teamA.tricks;
+    game.totalScores.teamB.tens += game.scores.teamB.tens;
+    game.totalScores.teamB.tricks += game.scores.teamB.tricks;
+
+    if (game.round >= MAX_ROUNDS) {
+      // Final round — game over
+      game.phase = PHASES.FINISHED;
+      gameOver = getGameOverMessage(game.totalScores);
+      game.endSummary = {
+        result: gameOver,
+        winner: getWinnerLabel(game.totalScores),
+        scores: { ...game.totalScores }
+      };
+    } else {
+      // More rounds to play — go to between-rounds phase
+      game.phase = PHASES.ROUND_END;
+      game.roundSummary = {
+        round: game.round,
+        nextRound: game.round + 1,
+        maxRounds: MAX_ROUNDS,
+        roundScores: {
+          teamA: { ...game.scores.teamA },
+          teamB: { ...game.scores.teamB }
+        },
+        totalScores: {
+          teamA: { ...game.totalScores.teamA },
+          teamB: { ...game.totalScores.teamB }
+        }
+      };
+    }
   }
 
   return {

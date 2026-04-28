@@ -6,7 +6,7 @@ import http from "http";
 import { once } from "node:events";
 import { Server } from "socket.io";
 import { io as createClient } from "socket.io-client";
-import { TRICK_RESOLVE_DELAY_MS } from "./server/src/game/constants.js";
+import { MAX_ROUNDS, TRICK_RESOLVE_DELAY_MS } from "./server/src/game/constants.js";
 import { createRoomManager } from "./server/src/roomManager.js";
 import { registerSocketHandlers } from "./server/src/socketHandlers.js";
 
@@ -58,7 +58,8 @@ function createTrackedClient(serverUrl, { roomId, playerId, name }) {
     stateVersion: 0,
     roundCompletions: [],
     roundResults: [],
-    clearTableEvents: []
+    clearTableEvents: [],
+    roundStartedEvents: []
   };
 
   socket.on("game_state", (state) => {
@@ -91,6 +92,9 @@ function createTrackedClient(serverUrl, { roomId, playerId, name }) {
   });
   socket.on("clear_table", (payload) => {
     tracker.clearTableEvents.push(payload);
+  });
+  socket.on("round_started", (payload) => {
+    tracker.roundStartedEvents.push(payload);
   });
 
   tracker.connectAndJoin = async () => {
@@ -143,7 +147,7 @@ function pickLegalCard(state) {
   return matchingSuitCards[0] ?? hand[0];
 }
 
-async function main() {
+async function runStabilityTest() {
   const roomId = "ROOMTEST1";
   const players = [
     { playerId: "player-1", name: "Alice" },
@@ -341,6 +345,19 @@ async function main() {
     });
 
     while (activeClients[0].lastState.phase !== "FINISHED") {
+      const phase = activeClients[0].lastState.phase;
+
+      if (phase === "ROUND_END") {
+        // Advance to the next round
+        activeClients[0].socket.emit("next_round", { roomId });
+        await Promise.all(
+          activeClients.map((client) =>
+            waitForState(client, (state) => state.phase === "TRUMP_DISCOVERY")
+          )
+        );
+        continue;
+      }
+
       if (activeClients[0].lastState.pendingTrick) {
         await Promise.all(
           activeClients.map((client) =>
@@ -376,6 +393,8 @@ async function main() {
       assert.ok(client.gameOvers.length > 0, "Expected a game_over event.");
       assert.ok(client.gameEndedEvents.length > 0, "Expected a game_ended event.");
       assert.equal(client.lastState.endSummary?.winner, client.gameEndedEvents.at(-1)?.winner);
+      // Should have advanced through MAX_ROUNDS - 1 round boundaries
+      assert.equal(client.roundStartedEvents.length, MAX_ROUNDS - 1, `Expected ${MAX_ROUNDS - 1} round_started events.`);
     });
 
     const preRestartVersions = new Map(
@@ -443,6 +462,133 @@ async function main() {
     io.close();
     server.close();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Full game simulation — auto-plays all cards through all rounds end-to-end
+// ---------------------------------------------------------------------------
+
+async function runFullGameSimulation() {
+  const roomId = "SIMROOM";
+  const players = [
+    { playerId: "sim-1", name: "Sim-Alice" },
+    { playerId: "sim-2", name: "Sim-Bob" },
+    { playerId: "sim-3", name: "Sim-Carol" },
+    { playerId: "sim-4", name: "Sim-Dave" }
+  ];
+
+  const { io, server, url } = await startTestServer();
+  const clients = [];
+
+  try {
+    for (const player of players) {
+      const client = createTrackedClient(url, { roomId, ...player });
+      clients.push(client);
+      await client.connectAndJoin();
+    }
+
+    clients[0].socket.emit("start_game", { roomId });
+    await Promise.all(
+      clients.map((client) =>
+        waitForState(client, (state) => state.phase === "TRUMP_DISCOVERY")
+      )
+    );
+
+    assert.equal(clients[0].lastState.round, 1, "Game should start at round 1.");
+
+    // Drive the entire game: play cards round-robin until FINISHED
+    const terminalPhases = new Set(["FINISHED"]);
+    let safetyCounter = 0;
+    const maxIterations = 10_000;
+
+    while (!terminalPhases.has(clients[0].lastState.phase)) {
+      safetyCounter += 1;
+      assert.ok(safetyCounter < maxIterations, "Simulation exceeded max iterations — possible infinite loop.");
+
+      const phase = clients[0].lastState.phase;
+
+      if (phase === "ROUND_END") {
+        clients[0].socket.emit("next_round", { roomId });
+        await Promise.all(
+          clients.map((client) =>
+            waitForState(client, (state) => state.phase === "TRUMP_DISCOVERY", 8_000)
+          )
+        );
+        continue;
+      }
+
+      if (clients[0].lastState.pendingTrick) {
+        await Promise.all(
+          clients.map((client) =>
+            waitForState(client, (state) => state.pendingTrick === null, 8_000)
+          )
+        );
+        continue;
+      }
+
+      const actingClient = clients.find(
+        (client) => client.lastState.yourPlayerIndex === client.lastState.currentTurnIndex
+      );
+
+      if (!actingClient) {
+        // currentTurnIndex is null mid-pending — wait for next state
+        await wait(50);
+        continue;
+      }
+
+      const card = pickLegalCard(actingClient.lastState);
+      assert.ok(card, `No legal card for ${actingClient.name} in phase ${phase}.`);
+
+      const prevVersions = new Map(clients.map((c) => [c.playerId, c.stateVersion]));
+      actingClient.socket.emit("play_card", { roomId, cardId: card.id });
+      await Promise.all(
+        clients.map((client) =>
+          waitFor(() => client.stateVersion > prevVersions.get(client.playerId), 8_000)
+        )
+      );
+    }
+
+    // --- Assertions after full game ---
+
+    clients.forEach((client) => {
+      assert.equal(client.lastState.phase, "FINISHED", "All clients should see FINISHED phase.");
+      assert.ok(client.gameEndedEvents.length > 0, "Expected game_ended event.");
+      assert.ok(client.gameOvers.length > 0, "Expected game_over event.");
+
+      // Should have seen MAX_ROUNDS - 1 round transitions
+      assert.equal(
+        client.roundStartedEvents.length,
+        MAX_ROUNDS - 1,
+        `Expected ${MAX_ROUNDS - 1} round_started events, got ${client.roundStartedEvents.length}.`
+      );
+
+      // totalScores should be non-trivial (52 cards per round, every trick is scored)
+      const total = client.lastState.totalScores;
+      const totalTricks = total.teamA.tricks + total.teamB.tricks;
+      assert.ok(totalTricks > 0, "Expected some tricks to have been scored.");
+
+      // Total tens captured must equal 4 per round × MAX_ROUNDS (one 10 per suit, 4 per deck)
+      const totalTens = total.teamA.tens + total.teamB.tens;
+      assert.equal(totalTens, 4 * MAX_ROUNDS, `Expected ${4 * MAX_ROUNDS} total tens, got ${totalTens}.`);
+
+      // endSummary winner must match the game_ended winner
+      assert.equal(client.lastState.endSummary?.winner, client.gameEndedEvents.at(-1)?.winner);
+
+      // Round number at end must equal MAX_ROUNDS
+      assert.equal(client.lastState.round, MAX_ROUNDS, `Expected round ${MAX_ROUNDS}, got ${client.lastState.round}.`);
+    });
+
+    console.log(`Full game simulation passed. (${MAX_ROUNDS} rounds, ${safetyCounter} iterations)`);
+  } finally {
+    clients.forEach((client) => client.socket.disconnect());
+    io.close();
+    server.close();
+  }
+}
+
+async function main() {
+  await runStabilityTest();
+  await runFullGameSimulation();
 }
 
 main().catch((error) => {

@@ -8,7 +8,9 @@
     "dev:server": "npm run dev --workspace server",
     "dev": "concurrently -n server,client -c green,blue \"npm run dev:server\" \"npm run dev:client\"",
     "test:game": "node test-game-setup.js",
-    "test:stability": "node test-multiplayer-stability.js"
+    "test:stability": "TRICK_RESOLVE_DELAY_MS=100 node test-multiplayer-stability.js",
+    "test:unit": "node --experimental-vm-modules --test server/src/game/engine.test.js",
+    "test:all": "npm run test:unit && npm run test:stability"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",

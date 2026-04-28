@@ -186,6 +186,11 @@ export default function App() {
       setIsRestarting(false);
     };
 
+    const onRoundStarted = () => {
+      setRoundMessage("");
+      setMessage("");
+    };
+
     const onPlayerLeft = ({ playerId }) => {
       if (playerId && playerId !== getPlayerId()) {
         setMessage("A player left the room.");
@@ -223,6 +228,7 @@ export default function App() {
     s.on("game_over", onGameOver);
     s.on("game_ended", onGameEnded);
     s.on("game_restarted", onGameRestarted);
+    s.on("round_started", onRoundStarted);
     s.on("player_left", onPlayerLeft);
     s.on("game_state", onGameState);
 
@@ -245,6 +251,7 @@ export default function App() {
       s.off("game_over", onGameOver);
       s.off("game_ended", onGameEnded);
       s.off("game_restarted", onGameRestarted);
+      s.off("round_started", onRoundStarted);
       s.off("player_left", onPlayerLeft);
       s.off("game_state", onGameState);
     };
@@ -294,6 +301,10 @@ export default function App() {
     socketRef.current.emit("start_game", { roomId });
   };
 
+  const nextRound = () => {
+    socketRef.current.emit("next_round", { roomId });
+  };
+
   const leaveRoom = () => {
     if (roomId) {
       socketRef.current.emit("leave_room", { roomId });
@@ -336,8 +347,12 @@ export default function App() {
     activePlayerCount === 4 &&
     (gameState?.players?.length ?? 0) === 4;
   const isFinished = gameState?.phase === "FINISHED";
-  const canReplay = isFinished && activePlayerCount === 4 && (gameState?.players?.length ?? 0) === 4;
+  const isRoundEnd = gameState?.phase === "ROUND_END";
+  const canReplay = (isFinished || isRoundEnd) && activePlayerCount === 4 && (gameState?.players?.length ?? 0) === 4;
   const endSummary = gameEndedData ?? gameState?.endSummary ?? null;
+  const roundSummary = gameState?.roundSummary ?? null;
+  const currentRound = gameState?.round ?? 1;
+  const totalScores = gameState?.totalScores ?? null;
 
   const renderSeat = (seatIndex, position) => {
     const player =
@@ -426,10 +441,20 @@ export default function App() {
         <div className="mx-auto flex w-full flex-col gap-2 sm:max-w-6xl sm:gap-4">
           <EndGameModal
             isOpen={isFinished}
+            isRoundEnd={false}
             summary={endSummary}
             canReplay={canReplay}
             isRestarting={isRestarting}
             onPlayAgain={restartGame}
+            onNextRound={nextRound}
+            onLeaveRoom={leaveRoom}
+          />
+          <EndGameModal
+            isOpen={isRoundEnd}
+            isRoundEnd={true}
+            roundSummary={roundSummary}
+            canReplay={canReplay}
+            onNextRound={nextRound}
             onLeaveRoom={leaveRoom}
           />
           <div className="flex flex-wrap items-center gap-2 sm:gap-4">
@@ -437,10 +462,13 @@ export default function App() {
               <span className="uppercase text-slate-400">Room</span>
               <span className="font-semibold">{gameState?.roomId || roomId}</span>
               <span className="text-slate-600">|</span>
+              <span className="uppercase text-slate-400">Round</span>
+              <span className="font-semibold">{currentRound}/5</span>
+              <span className="text-slate-600">|</span>
               <span className="uppercase text-slate-400">Phase</span>
               <span className="font-semibold">{gameState?.phase || "LOBBY"}</span>
             </div>
-            <ScoreBoard scores={gameState?.scores} compact />
+            <ScoreBoard scores={totalScores ?? gameState?.scores} compact />
             {canStart && (
               <button
                 type="button"
@@ -518,12 +546,16 @@ export default function App() {
             </div>
 
             <div className="hidden flex-col gap-3 lg:flex">
-              <ScoreBoard scores={gameState?.scores} />
+              <ScoreBoard scores={totalScores ?? gameState?.scores} />
               <Deck isShuffling={isShuffling} />
               <div className="glass-panel rounded-2xl p-3 text-sm text-slate-300 sm:rounded-3xl sm:p-4">
                 <div className="font-semibold text-slate-100">Status</div>
                 <div className="mt-2 min-h-[40px] text-xs text-slate-400">
-                  {message || roundMessage || "Awaiting action."}
+                  {gameState?.phase === "TRUMP_DISCOVERY" && !gameState?.trumpSuit
+                    ? isYourTurn
+                      ? "Trump Discovery: play any card. If you can't follow suit, your card's suit becomes trump."
+                      : "Trump Discovery: waiting for players to determine trump suit."
+                    : message || roundMessage || "Awaiting action."}
                 </div>
               </div>
             </div>
@@ -534,7 +566,11 @@ export default function App() {
             <div className="glass-panel flex-1 rounded-xl p-2 text-xs text-slate-300">
               <div className="font-semibold text-slate-100">Status</div>
               <div className="mt-1 text-[11px] text-slate-400">
-                {message || roundMessage || "Awaiting action."}
+                {gameState?.phase === "TRUMP_DISCOVERY" && !gameState?.trumpSuit
+                  ? isYourTurn
+                    ? "Trump Discovery: play any card. If you can't follow suit, your card's suit becomes trump."
+                    : "Trump Discovery: waiting for trump suit to be determined."
+                  : message || roundMessage || "Awaiting action."}
               </div>
             </div>
           </div>

@@ -5,6 +5,7 @@ export const PHASES = {
   LOBBY: "LOBBY",
   TRUMP_DISCOVERY: "TRUMP_DISCOVERY",
   MAIN_GAME: "MAIN_GAME",
+  ROUND_END: "ROUND_END",
   FINISHED: "FINISHED"
 };
 
@@ -13,4 +14,5 @@ export const TEAM_KEYS = {
   TEAM_B: "teamB"
 };
 
-export const TRICK_RESOLVE_DELAY_MS = 3000;
+export const TRICK_RESOLVE_DELAY_MS = Number(process.env.TRICK_RESOLVE_DELAY_MS ?? 3000);
+export const MAX_ROUNDS = 5;

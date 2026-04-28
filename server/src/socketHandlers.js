@@ -4,6 +4,7 @@ import {
   playCardInGame,
   resolveCompletedTrick,
   startInitialDeal,
+  startNextRound,
   syncGamePlayers
 } from "./game/engine.js";
 
@@ -88,7 +89,7 @@ export function registerSocketHandlers(io, socket, roomManager) {
 
       liveRoom.trickResolutionTimer = null;
 
-      if (!liveRoom.game || liveRoom.game.phase === PHASES.FINISHED) {
+      if (!liveRoom.game || liveRoom.game.phase === PHASES.FINISHED || liveRoom.game.phase === PHASES.ROUND_END) {
         return;
       }
 
@@ -210,6 +211,26 @@ export function registerSocketHandlers(io, socket, roomManager) {
     emitStateToRoom(targetRoomId);
   });
 
+  socket.on("next_round", ({ roomId }) => {
+    const targetRoomId = `${roomId ?? socket.data.roomId ?? ""}`.trim().toUpperCase();
+    const room = roomManager.getRoom(targetRoomId);
+
+    if (!room?.game) {
+      socket.emit("invalid_move", { reason: "Game not found." });
+      return;
+    }
+
+    if (room.game.phase !== PHASES.ROUND_END) {
+      socket.emit("invalid_move", { reason: "Not between rounds." });
+      return;
+    }
+
+    clearTrickResolutionTimer(room);
+    startNextRound(room.game);
+    io.to(targetRoomId).emit("round_started", { round: room.game.round });
+    emitStateToRoom(targetRoomId);
+  });
+
   socket.on("play_card", ({ roomId, cardId }) => {
     const targetRoomId = `${roomId ?? socket.data.roomId ?? ""}`.trim().toUpperCase();
     const room = roomManager.getRoom(targetRoomId);
@@ -271,7 +292,8 @@ export function registerSocketHandlers(io, socket, roomManager) {
     const shouldEndGame =
       room.game?.phase &&
       room.game.phase !== PHASES.LOBBY &&
-      room.game.phase !== PHASES.FINISHED;
+      room.game.phase !== PHASES.FINISHED &&
+      room.game.phase !== PHASES.ROUND_END;
 
     if (shouldEndGame) {
       clearTrickResolutionTimer(room);
