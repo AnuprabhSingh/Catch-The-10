@@ -8,7 +8,7 @@ import RoomLobby from "./components/RoomLobby";
 import EndGameModal from "./components/EndGameModal";
 import TensWonPanel from "./components/TensWonPanel";
 import Landing from "./pages/Landing";
-import { SUIT_LABELS, SUIT_SYMBOLS } from "./utils/cards";
+import { SUIT_COLORS, SUIT_LABELS, SUIT_SYMBOLS } from "./utils/cards";
 import { isMuted, playSound, setMuted } from "./utils/audioManager";
 
 function getStatusText(gameState, isYourTurn, message) {
@@ -106,6 +106,9 @@ export default function App() {
   const [trickWinnerAnnouncement, setTrickWinnerAnnouncement] = useState(null);
   const [flashSeatIndex, setFlashSeatIndex] = useState(null);
   const [soundMuted, setSoundMuted] = useState(isMuted());
+  const [trumpReveal, setTrumpReveal] = useState(null); // { suit, exiting }
+  const trumpRevealTimerRef = useRef(null);
+  const [dealKey, setDealKey] = useState(0);
 
   const emitJoinRoom = (session) => {
     if (!session?.roomId || !session?.playerName) {
@@ -257,6 +260,7 @@ export default function App() {
       setMessage("");
       setTrickWinnerAnnouncement(null);
       prevTrumpRef.current = null; // reset so trump sound fires again next round
+      setDealKey((k) => k + 1); // re-mount hand cards to replay deal animation
       playSound("deal");
     };
 
@@ -275,6 +279,13 @@ export default function App() {
       // Trump suit revealed for the first time this round
       if (state.trumpSuit && !prevTrumpRef.current) {
         playSound("catch", 0.7);
+        // Show trump reveal banner
+        clearTimeout(trumpRevealTimerRef.current);
+        setTrumpReveal({ suit: state.trumpSuit, exiting: false });
+        trumpRevealTimerRef.current = setTimeout(() => {
+          setTrumpReveal((prev) => prev ? { ...prev, exiting: true } : null);
+          trumpRevealTimerRef.current = setTimeout(() => setTrumpReveal(null), 380);
+        }, 1800);
       }
       prevTrumpRef.current = state.trumpSuit ?? null;
 
@@ -337,6 +348,7 @@ export default function App() {
 
     return () => {
       clearTimeout(flashTimerRef.current);
+      clearTimeout(trumpRevealTimerRef.current);
       s.off("connect", onConnect);
       s.off("server_hello", onServerHello);
       s.off("disconnect", onDisconnect);
@@ -488,6 +500,21 @@ export default function App() {
 
   return (
     <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.3),_transparent_50%),radial-gradient(circle_at_bottom,_rgba(20,83,45,0.25),_transparent_55%),linear-gradient(135deg,_#020617,_#0f172a_55%,_#1e293b)] p-2 text-slate-100 sm:p-4 md:p-6">
+      {/* Trump reveal overlay */}
+      {trumpReveal && (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+          <div className={`flex flex-col items-center gap-3 rounded-3xl border border-amber-400/50 bg-slate-900/90 px-10 py-8 shadow-[0_0_60px_rgba(251,191,36,0.4)] backdrop-blur-md
+            ${trumpReveal.exiting ? "trump-reveal-exit" : "trump-reveal-enter"}`}>
+            <div className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-400">Trump Suit</div>
+            <div className={`text-7xl leading-none ${SUIT_COLORS[trumpReveal.suit]}`}>
+              {SUIT_SYMBOLS[trumpReveal.suit]}
+            </div>
+            <div className={`text-2xl font-black tracking-wide ${SUIT_COLORS[trumpReveal.suit]}`}>
+              {SUIT_LABELS[trumpReveal.suit]}
+            </div>
+          </div>
+        </div>
+      )}
       {!joined && (
         <Landing
           connected={connected}
@@ -661,13 +688,13 @@ export default function App() {
                 <div className="hand-fan">
                   {(yourPlayer?.hand || []).map((card, index) => (
                     <Card
-                      key={card.id}
+                      key={`${dealKey}-${card.id}`}
                       card={card}
                       isClickable={isYourTurn}
                       onClick={() => playCard(card)}
                       isTrump={card.suit === gameState?.trumpSuit}
                       isDimmed={!isYourTurn}
-                      dealDelay={index * 40}
+                      dealDelay={index * 60}
                       style={{ "--fan-index": index }}
                     />
                   ))}

@@ -23,8 +23,9 @@ export default function PlayerSeat({ player, isCurrent, isYou, position }) {
     right: "items-end"
   };
 
-  const team = player?.team ?? "A";
-  const colors = TEAM_COLORS[team] ?? TEAM_COLORS.A;
+  // server sends "Team A" / "Team B"; extract the letter for colour lookup
+  const teamLetter = player?.team?.at(-1)?.toUpperCase();
+  const colors = TEAM_COLORS[teamLetter] ?? TEAM_COLORS.A;
   const initials = player?.name
     ? player.name.slice(0, 2).toUpperCase()
     : "?";
@@ -61,6 +62,13 @@ export default function PlayerSeat({ player, isCurrent, isYou, position }) {
         {player?.name || "—"}
         {isYou && <span className="ml-0.5 text-[8px] text-slate-500"> (you)</span>}
       </div>
+
+      {/* Team label */}
+      {player?.team && (
+        <div className={`text-[9px] font-semibold uppercase tracking-wide ${colors.label}`}>
+          {player.team}
+        </div>
+      )}
 
       {/* Cards in hand */}
       {player && (

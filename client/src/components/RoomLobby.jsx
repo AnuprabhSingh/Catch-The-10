@@ -53,7 +53,9 @@ export default function RoomLobby({ roomId, playerName, gameState, onStartGame, 
       <div className="space-y-2">
         <p className="text-sm text-slate-400">Active Players ({activePlayerCount}/4)</p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {gameState?.players?.map((player) => (
+          {gameState?.players?.map((player) => {
+            const isTeamA = player.seatIndex % 2 === 0;
+            return (
             <div
               key={player.playerId}
               className={`rounded-lg border p-3 text-center ${
@@ -63,12 +65,15 @@ export default function RoomLobby({ roomId, playerName, gameState, onStartGame, 
               }`}
             >
               <p className="font-semibold">{player.name}</p>
-              <p className="text-xs text-slate-400">Seat {player.seatIndex + 1}</p>
-              <p className="text-xs text-slate-500">
+              <p className={`text-[10px] font-semibold uppercase tracking-wide mt-0.5 ${isTeamA ? "text-emerald-400" : "text-rose-400"}`}>
+                {isTeamA ? "Team A" : "Team B"}
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
                 {player.isConnected ? "Connected" : "Reconnecting..."}
               </p>
             </div>
-          ))}
+            );
+          })}
           {playerCount < 4 &&
             Array.from({ length: 4 - playerCount }).map((_, idx) => (
               <div

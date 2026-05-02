@@ -1,3 +1,46 @@
+import { useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
+
+const CONFETTI_COLORS = [
+  "#34d399", "#f87171", "#fbbf24", "#60a5fa", "#a78bfa", "#f472b6", "#fff"
+];
+
+function Confetti() {
+  const pieces = useMemo(() =>
+    Array.from({ length: 80 }, (_, i) => ({
+      id: i,
+      left: `${Math.random() * 100}%`,
+      color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+      duration: `${2.2 + Math.random() * 2}s`,
+      delay: `${Math.random() * 1.2}s`,
+      size: `${7 + Math.random() * 7}px`,
+      borderRadius: Math.random() > 0.5 ? "50%" : "2px",
+    })),
+  []);
+
+  return createPortal(
+    <>
+      {pieces.map((p) => (
+        <div
+          key={p.id}
+          className="confetti-piece"
+          style={{
+            left: p.left,
+            backgroundColor: p.color,
+            width: p.size,
+            height: p.size,
+            borderRadius: p.borderRadius,
+            animationDuration: p.duration,
+            animationDelay: p.delay,
+            zIndex: 9999,
+          }}
+        />
+      ))}
+    </>,
+    document.body
+  );
+}
+
 function ScoreGrid({ scores, label }) {
   return (
     <div className="mt-4 grid grid-cols-2 gap-3">
@@ -88,6 +131,7 @@ export default function EndGameModal({
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+      <Confetti />
       <div className="glass-panel w-full max-w-md rounded-3xl border border-slate-700/60 p-6 shadow-2xl sm:p-8">
         <div className="space-y-2 text-center">
           <div className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300">
